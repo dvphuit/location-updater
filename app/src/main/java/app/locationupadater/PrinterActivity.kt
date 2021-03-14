@@ -1,207 +1,266 @@
 package app.locationupadater
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothSocket
-import android.content.BroadcastReceiver
-import android.content.Context
+import android.app.Activity
 import android.content.Intent
-import android.content.IntentFilter
+import android.graphics.*
 import android.os.Bundle
-import android.os.Environment
-import android.os.Handler
-import android.print.PdfPrint
-import android.print.PrintAttributes
-import android.print.PrintAttributes.Resolution
-import android.print.PrintJob
-import android.print.PrintManager
-import android.text.format.DateFormat
+import android.util.Base64
 import android.util.Log
+import android.view.View
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.FileProvider
+import app.locationupadater.printer.ConnectBluetoothActivity
+import app.locationupadater.printer.models.PrintAlignment
+import app.locationupadater.printer.models.PrintFont
+import app.locationupadater.printer.models.ThermalPrinter
 import kotlinx.android.synthetic.main.activity_printer.*
-import kotlinx.android.synthetic.main.activity_printer.webview
-import kotlinx.android.synthetic.main.activity_web.*
-import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
-import java.util.*
+import org.json.JSONArray
 
 
-class PrinterActivity : AppCompatActivity() {
-    private var printJobs: List<PrintJob> = mutableListOf()
-    lateinit var bluetoothAdapter: BluetoothAdapter
-    lateinit var bluetoothSocket: BluetoothSocket
-    lateinit var bluetoothDevice: BluetoothDevice
-    lateinit var mReceiver: BroadcastReceiver
+const val getBillContent = """
+    function getBase64Image(img) {
+        let canvas = document.createElement("canvas");
+    
+        let imgWidth = img.naturalWidth;
+        let imgHeight = img.naturalHeight;
+        let scale = Math.min((250 / imgWidth), (150 / imgHeight));
+        canvas.width = imgWidth * scale;
+        canvas.height = imgHeight * scale;
+    
+        let ctx = canvas.getContext("2d");
+        ctx.drawImage(img,
+            0,
+            0,
+            imgWidth,
+            imgHeight,
+            (canvas.width - imgWidth * scale) / 2,
+            (canvas.height - imgHeight * scale) / 2,
+            imgWidth * scale,
+            imgHeight * scale
+        )
+        return canvas.toDataURL("image/png", 0.7).replace(/^data:image\/(png|jpg|jpeg);base64,/, "");
+    }
+    
+    function parseHtml(){
+        let table = document.querySelectorAll('table')
+        let bills = []
+        table.forEach(tb => {
+            let bill = []
+            let tr = tb.querySelectorAll('tr')
+            for (let i = 0; i < tr.length; i++) {
+                let td = tr[i].querySelectorAll('td');
+                if (td.length == 2) {
+                    bill.push({
+                        key: "content",
+                        value: [td[0].innerText, td[1].innerText]
+                    })
+                } else {
+                    let firstEle = td[0].firstElementChild
+                    if (firstEle) {
+                        if (firstEle.nodeName == "HR") {
+                            bill.push({
+                                key: "hr",
+                                value: "-"
+                            })
+                        } else if (firstEle.nodeName == "B") {
+                            bill.push({
+                                key: "title",
+                                value: firstEle.innerText
+                            })
+                        } else if (firstEle.nodeName == "IMG") {
+                            bill.push({
+                                key: "img",
+                                value: getBase64Image(firstEle)
+                            })
+                        }
+                    } else {
+                        bill.push({
+                            key: "center_text",
+                            value: td[0].innerText
+                        })
+                    }
+                }
+            }
+            bills.push(bill)
+        })
+        return JSON.stringify(bills)
+    }
+    
+    parseHtml();
 
-    // needed for communication to bluetooth device / network
-    private lateinit var mOutputStream: OutputStream
-    lateinit var mInputStream: InputStream
-
-    lateinit var workerThread: Thread
-
-    lateinit var readBuffer: ByteArray
-    var readBufferPosition: Int = 0
-    var stopWorker: Boolean = false
+"""
 
 
-    @SuppressLint("SetJavaScriptEnabled")
+class PrinterActivity : AppCompatActivity(), View.OnClickListener {
+
+    private lateinit var bills: JSONArray
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_printer)
-        initBroadcastReceiver()
-        btnPair.setOnClickListener {
-            findBluetooth()
-        }
-
-        btnPrint.setOnClickListener {
-//            sendData()
-
-            createWebPrintJob(webview)
-        }
-
-        val filter = IntentFilter()
-        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
-        filter.addAction(BluetoothDevice.ACTION_FOUND)
-        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED)
-        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
-
-        registerReceiver(mReceiver, filter)
-
-        webview.settings.javaScriptEnabled = true
-        webview.loadUrl("https://catminh.biz/shopper/bill?c=s006")
+        initViews()
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun initViews() {
+        //webview
+        webView.settings.javaScriptEnabled = true
+        webView.loadUrl("https://catminh.biz/shopper/bill?c=s006")
 
-    private fun createWebPrintJob(webView: WebView) {
-        val jobName = getString(R.string.app_name) + " Document"
-        val attributes = PrintAttributes.Builder()
-            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-            .setResolution(Resolution("pdf", "pdf", 600, 600))
-            .setMinMargins(PrintAttributes.Margins.NO_MARGINS).build()
-//        val path: File =
-//            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM.toString() + "/PDFTest/")
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                Log.d("TEST1", "onload finished")
+                view.evaluateJavascript(getBillContent) {
+                    bills = JSONArray(it.substring(1, it.lastIndex).replace("\\", ""))
+                }
+            }
+        }
 
-        val path: String =
-            (getExternalFilesDir(Environment.DIRECTORY_PICTURES)?.absolutePath + File.separator)
-//        val fileName =
-//            "IMG_" + DateFormat.format("yyyyMMdd_hhmmss", Calendar.getInstance(Locale.getDefault()))
-//                .toString() + ".jpg"
+        //button
+        btPair.setOnClickListener(this)
+        btStartPrint.setOnClickListener(this)
 
-//        imageUri = FileProvider.getUriForFile(
-//            this,
-//            this.applicationContext.packageName.toString() + ".provider",
-//            File(path + fileName)
-//        )
-        val file = File(path)
-        val pdfPrint = PdfPrint(this, attributes)
-        pdfPrint.print(
-            webView.createPrintDocumentAdapter(jobName),
-            file,
-            "output_" + System.currentTimeMillis() + ".pdf"
+    }
+
+    private fun getBitmapFromBase64(base64: String): Bitmap? {
+        val imageAsBytes = Base64.decode(base64, Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(
+            imageAsBytes, 0,
+            imageAsBytes.size
         )
+        return bitmap.removeAlpha()
     }
 
-    private fun sendData() {
-        mOutputStream.write(edtInput.text.toString().toByteArray())
-        pushInfo("Data sent!")
-    }
+    private fun Bitmap.removeAlpha(backgroundColor: Int = Color.WHITE): Bitmap? {
+        val bitmap = copy(config, true)
+        var alpha: Int
+        var red: Int
+        var green: Int
+        var blue: Int
+        var pixel: Int
 
-    private fun initBroadcastReceiver() {
-        mReceiver = object : BroadcastReceiver() {
-            override fun onReceive(p0: Context?, intent: Intent?) {
-                val action = intent?.action
-                print("xxx on receive...")
-                if (BluetoothDevice.ACTION_FOUND == action) {
-                    val device =
-                        intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) as BluetoothDevice
-                    println("xxx found devicex : " + device.name)
+        // scan through all pixels
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                pixel = getPixel(x, y)
+                alpha = Color.alpha(pixel)
+                red = Color.red(pixel)
+                green = Color.green(pixel)
+                blue = Color.blue(pixel)
+
+                if (alpha == 0) {
+                    // if pixel is full transparent then
+                    // replace it by solid background color
+                    bitmap.setPixel(x, y, backgroundColor)
+                } else {
+                    // if pixel is partially transparent then
+                    // set pixel full opaque
+                    val color = Color.argb(
+                        255,
+                        red,
+                        green,
+                        blue
+                    )
+                    bitmap.setPixel(x, y, color)
                 }
-                when (action) {
-                    BluetoothDevice.ACTION_FOUND -> {
-                        val device =
-                            intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) as BluetoothDevice
-                        println("xxx found device : " + device.name)
+            }
+        }
+
+        return bitmap
+    }
+
+//    [
+//    [
+//    {
+//        "key": "title",
+//        "value" : "ABC"
+//    },
+//    {
+//        "key": "hr",
+//        "value" : "-"
+//    },
+//    {
+//        "key": "content",
+//        "value" : ["k", "v"]
+//    },
+//    {
+//        "key": "center_text",
+//        "value" : "adf"
+//    },
+//    {
+//        "key": "signature",
+//        "value" : "base64"
+//    }
+//    ]
+//    ]
+
+    @SuppressLint("DefaultLocale")
+    private fun doPrint() {
+        val printer = ThermalPrinter.instance
+
+//        for (i in 0 until bills.length()) {
+        for (i in 0 until 1) {
+            printer.writeImage(BitmapFactory.decodeResource(resources, R.drawable.head))
+            val bill = bills.getJSONArray(i)
+            for (j in 0 until bill.length()) {
+                val obj = bill.getJSONObject(j)
+                when (obj.getString("key")) {
+                    "title" -> {
+                        printer.write(
+                            obj.getString("value"),
+                            PrintAlignment.CENTER,
+                            PrintFont.BOLD
+                        )
                     }
-
-                }
-            }
-        }
-    }
-
-    fun pushInfo(info: String) {
-        txtInfo.text = txtInfo.text.toString() + "\n" + info
-    }
-
-    private fun findBluetooth() {
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-        val pairedDevice = bluetoothAdapter.bondedDevices
-        if (pairedDevice.isNotEmpty()) {
-            for (device in pairedDevice) {
-                println("xxxx printer name : " + device.name)
-                //EP5802AI is the name for your bluetooth printer
-                //the printer should be paired in order to scanable
-                if (device.name.equals("GPTV-58B1")) {
-                    bluetoothDevice = device
-                    pushInfo("Bluetooth device found!")
-                    openBluetooth()
-                }
-            }
-        }
-        bluetoothAdapter.startDiscovery()
-    }
-
-    private fun openBluetooth() {
-        val uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
-        bluetoothSocket = bluetoothDevice.createRfcommSocketToServiceRecord(uuid)
-        bluetoothSocket.connect()
-        mOutputStream = bluetoothSocket.outputStream
-        mInputStream = bluetoothSocket.inputStream
-
-        pushInfo("Bluetooth opened...")
-        beginListenerForData()
-    }
-
-    private fun beginListenerForData() {
-        val handler = Handler()
-        val delimiter: Byte = 10
-
-        stopWorker = false
-        readBufferPosition = 0
-        readBuffer = ByteArray(1024)
-
-        workerThread = Thread(Runnable {
-            while (!Thread.currentThread().isInterrupted && !stopWorker) {
-                val bytesAvaliable = mInputStream.available()
-                if (bytesAvaliable > 0) {
-                    val packetBytes = ByteArray(bytesAvaliable)
-                    mInputStream.read(packetBytes)
-
-                    for (i in 0 until bytesAvaliable - 1) {
-                        val b = packetBytes[i]
-                        if (b == delimiter) {
-                            val encodedBytes = ByteArray(readBufferPosition)
-                            System.arraycopy(
-                                readBuffer, 0,
-                                encodedBytes, 0,
-                                encodedBytes.size
-                            )
-
-//                            val data = String(encodedBytes, Charset("US-ASCII"))
-                            readBufferPosition = 0
-
-//                            handler.post { pushInfo(data) }
-                        } else {
-                            readBuffer[readBufferPosition++] = b
+                    "center_text" -> {
+                        printer.write(
+                            obj.getString("value"),
+                            PrintAlignment.CENTER,
+                            PrintFont.NORMAL
+                        )
+                    }
+                    "hr" -> {
+                        printer.fillLineWith('-')
+                    }
+                    "content" -> {
+                        val value = obj.getJSONArray("value")
+                        printer.writeWrap(value.getString(0).toLowerCase().capitalize(), value.getString(1))
+                    }
+                    "img" -> {
+                        val bitMap = getBitmapFromBase64(obj.getString("value"))
+                        bitMap?.let {
+                            printer.writeImage(bitMap)
                         }
                     }
                 }
             }
-        })
-
-        workerThread.start()
+        }
+        printer.print()
     }
+
+    @SuppressLint("SetTextI18n")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == Activity.RESULT_OK && requestCode == ConnectBluetoothActivity.CONNECT_BLUETOOTH) {
+            tvInfo.text = "Connected: ${data?.getStringExtra("device_name")}"
+        }
+    }
+
+    override fun onClick(v: View?) {
+        when (v) {
+            btPair -> {
+                startActivityForResult(
+                    Intent(this, ConnectBluetoothActivity::class.java),
+                    ConnectBluetoothActivity.CONNECT_BLUETOOTH
+                )
+            }
+
+            btStartPrint -> {
+                doPrint()
+            }
+        }
+    }
+
 }

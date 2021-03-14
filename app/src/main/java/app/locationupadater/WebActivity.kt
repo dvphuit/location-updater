@@ -4,12 +4,11 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.*
+import android.location.Location
 import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.os.Environment
-import android.os.IBinder
+import android.os.*
 import android.provider.MediaStore
 import android.text.format.DateFormat
 import android.util.Log
@@ -29,6 +28,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
+import java.time.LocalDateTime
 import java.util.*
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -112,7 +112,7 @@ class WebActivity : AppCompatActivity() {
                 val time = formatter.format(calendar.timeInMillis)
                 mList += "$lat,$long;$time|"
                 Log.d("TEST", "start tracking")
-                tracking()
+//                tracking()
             }
         }
     }
@@ -125,12 +125,10 @@ class WebActivity : AppCompatActivity() {
         setContentView(R.layout.activity_web)
         preferences = PreferenceManager.getDefaultSharedPreferences(this)
         tickerChannel = ticker(delayMillis = 2_000L, initialDelayMillis = 0)
-
-        initData()
-        initListener()
-//        requestPermission()
-        startService()
-
+        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager?
+        requestPermission()
+//        startService()
+        runJob()
         val jsInterface = JavaScriptInterface { url, user, distance ->
             Log.d("TEST", "url $url, user $user, dist $distance")
             mUrl = url
@@ -177,23 +175,54 @@ class WebActivity : AppCompatActivity() {
 
         webview.settings.setGeolocationEnabled(true)
 
-//        webview.loadUrl("https://catminh.biz/ongbau/")
+        webview.loadUrl("https://catminh.biz/ongbau/")
 
         val intentFilter = IntentFilter()
         intentFilter.addAction(LocationService.BROADCAST_ACTION)
         registerReceiver(mLocationReceiver, intentFilter)
     }
 
-    private fun initData() {
-        val currentUrl = preferences.getString(CURRENT_URL, "")
-        edtInput.setText(currentUrl)
+    private var locationManager: LocationManager? = null
+
+
+    @SuppressLint("MissingPermission")
+    private fun runJob() {
+        tickerChannel = ticker(delayMillis = 2_000, initialDelayMillis = 0)
+        GlobalScope.launch {
+            for (event in tickerChannel) {
+                val currentTime = LocalDateTime.now()
+                println(currentTime)
+
+                getLocation()
+            }
+        }
     }
 
-    private fun tracking() {
+    @SuppressLint("MissingPermission")
+    private suspend fun getLocation() = withContext(Dispatchers.Main){
+//        webview.evaluateJavascript("javascript:CallMe('abcaaaadkjfhsjkfsdf jsdflkjsdfksdfkjsd')") {
+//            Log.d("TEST", "call js $it")
+//        }
+
+//       val loc = locationManager?.requestLocationUpdates()
+//        println("lat ${loc?.latitude} -- lng ${loc?.longitude}")
+    }
+
+    private val locationListener: LocationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            tracking(location)
+        }
+
+        override fun onStatusChanged(provider: String, status: Int, extras: Bundle) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+    }
+
+    private fun tracking(loc: Location?) {
         if (mUser == null || mUrl == null) return
         val params = urlEncodeString("user", mUser) +
                 "&" + urlEncodeString("list", mList) +
-                "&" + urlEncodeString("gps", "$mLatitude,$mLongtitude")
+                "&" + urlEncodeString("gps", "${loc?.latitude},${loc?.longitude}")
         val url = URL(mUrl)
         Log.d("TEST", "tracking -> $url, $params")
         webview.evaluateJavascript("javascript:getLocation()") {
@@ -231,15 +260,6 @@ class WebActivity : AppCompatActivity() {
         return URLEncoder.encode(param, "UTF8") + "=" + URLEncoder.encode(value, "UTF8")
     }
 
-    private fun initListener() {
-        tvSend.setOnClickListener {
-            hideKeyboard()
-            val url = edtInput.text.trim().toString()
-            containerInputUrl.visibility = View.GONE
-            preferences.edit().putString(CURRENT_URL, url).apply()
-            webview.loadUrl("https://$url")
-        }
-    }
 
     private fun startService() {
         Log.d("TEST", " ${this.javaClass.simpleName} startService")
