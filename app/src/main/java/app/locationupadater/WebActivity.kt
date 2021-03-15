@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.*
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -17,8 +18,14 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.preference.PreferenceManager
+
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
 import kotlinx.android.synthetic.main.activity_web.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -64,6 +71,7 @@ class WebActivity : AppCompatActivity() {
         ex.printStackTrace()
     }
 
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.e("LocationService", "onServiceDisconnected")
@@ -87,7 +95,7 @@ class WebActivity : AppCompatActivity() {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
         )
-
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 999
         private val formatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
         private const val LOCATION_REQUEST = 12345
@@ -95,6 +103,49 @@ class WebActivity : AppCompatActivity() {
         private const val TIME_INTERVAL = 2000
         private const val DEFAULT_DISTANCE = 0.001
         private const val CURRENT_URL = "CURRENT_URL"
+    }
+
+    override fun onStart() {
+        super.onStart()
+        when {
+            PermissionUtils.isAccessFineLocationGranted(this) -> {
+                when {
+                    PermissionUtils.isLocationEnabled(this) -> {
+                        setUpLocationListener()
+                    }
+                    else -> {
+                        PermissionUtils.showGPSNotEnabledDialog(this)
+                    }
+                }
+            }
+            else -> {
+                PermissionUtils.requestAccessFineLocationPermission(
+                    this,
+                    LOCATION_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun setUpLocationListener() {
+        val fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        // for getting the current location update after every 2 seconds with high accuracy
+        val locationRequest = LocationRequest().setInterval(2000).setFastestInterval(2000)
+            .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
+        fusedLocationProviderClient.requestLocationUpdates(
+            locationRequest,
+            object : LocationCallback() {
+                override fun onLocationResult(locationResult: LocationResult) {
+                    super.onLocationResult(locationResult)
+                    for (location in locationResult.locations) {
+
+                        Log.d("TEST", "lat: ${location.latitude} -- lng: ${location.longitude}")
+                    }
+                }
+            },
+            Looper.myLooper()
+        )
     }
 
     private val mLocationReceiver = LocationBroadcast { lat, long ->
@@ -123,63 +174,63 @@ class WebActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_web)
-        preferences = PreferenceManager.getDefaultSharedPreferences(this)
-        tickerChannel = ticker(delayMillis = 2_000L, initialDelayMillis = 0)
-        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager?
-        requestPermission()
+//        preferences = PreferenceManager.getDefaultSharedPreferences(this)
+//        tickerChannel = ticker(delayMillis = 2_000L, initialDelayMillis = 0)
+//        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager?
+//        requestPermission()
 //        startService()
-        runJob()
-        val jsInterface = JavaScriptInterface { url, user, distance ->
-            Log.d("TEST", "url $url, user $user, dist $distance")
-            mUrl = url
-            mUser = user
-            try {
-                mDistanceAllow = distance?.toDouble() ?: DEFAULT_DISTANCE
-            } catch (e: Exception) {
-            }
-        }
-
-        webview.settings.allowFileAccessFromFileURLs = true
-        webview.settings.allowUniversalAccessFromFileURLs = true
-        webview.settings.javaScriptEnabled = true
-        webview.addJavascriptInterface(jsInterface, "JSInterface")
-        webview.webChromeClient = object : WebChromeClient() {
-            override fun onGeolocationPermissionsShowPrompt(
-                origin: String?,
-                callback: GeolocationPermissions.Callback?
-            ) {
-                callback?.invoke(origin, true, false)
-            }
-
-            override fun onShowFileChooser(
-                webView: WebView?,
-                filePathCallback: ValueCallback<Array<Uri>>?,
-                fileChooserParams: FileChooserParams?
-            ): Boolean {
-                mUploadCallbackAboveL = filePathCallback
-                takePhoto()
-                return true
-            }
-        }
-
-        webview.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?) = false
-
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
-                return false
-            }
-        }
-
-        webview.settings.setGeolocationEnabled(true)
-
-        webview.loadUrl("https://catminh.biz/ongbau/")
-
-        val intentFilter = IntentFilter()
-        intentFilter.addAction(LocationService.BROADCAST_ACTION)
-        registerReceiver(mLocationReceiver, intentFilter)
+//        runJob()
+//        val jsInterface = JavaScriptInterface { url, user, distance ->
+//            Log.d("TEST", "url $url, user $user, dist $distance")
+//            mUrl = url
+//            mUser = user
+//            try {
+//                mDistanceAllow = distance?.toDouble() ?: DEFAULT_DISTANCE
+//            } catch (e: Exception) {
+//            }
+//        }
+//
+//        webview.settings.allowFileAccessFromFileURLs = true
+//        webview.settings.allowUniversalAccessFromFileURLs = true
+//        webview.settings.javaScriptEnabled = true
+//        webview.addJavascriptInterface(jsInterface, "JSInterface")
+//        webview.webChromeClient = object : WebChromeClient() {
+//            override fun onGeolocationPermissionsShowPrompt(
+//                origin: String?,
+//                callback: GeolocationPermissions.Callback?
+//            ) {
+//                callback?.invoke(origin, true, false)
+//            }
+//
+//            override fun onShowFileChooser(
+//                webView: WebView?,
+//                filePathCallback: ValueCallback<Array<Uri>>?,
+//                fileChooserParams: FileChooserParams?
+//            ): Boolean {
+//                mUploadCallbackAboveL = filePathCallback
+//                takePhoto()
+//                return true
+//            }
+//        }
+//
+//        webview.webViewClient = object : WebViewClient() {
+//            override fun shouldOverrideUrlLoading(view: WebView?, url: String?) = false
+//
+//            override fun shouldOverrideUrlLoading(
+//                view: WebView,
+//                request: WebResourceRequest
+//            ): Boolean {
+//                return false
+//            }
+//        }
+//
+//        webview.settings.setGeolocationEnabled(true)
+//
+//        webview.loadUrl("https://catminh.biz/ongbau/")
+//
+//        val intentFilter = IntentFilter()
+//        intentFilter.addAction(LocationService.BROADCAST_ACTION)
+//        registerReceiver(mLocationReceiver, intentFilter)
     }
 
     private var locationManager: LocationManager? = null
@@ -199,7 +250,7 @@ class WebActivity : AppCompatActivity() {
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun getLocation() = withContext(Dispatchers.Main){
+    private suspend fun getLocation() = withContext(Dispatchers.Main) {
 //        webview.evaluateJavascript("javascript:CallMe('abcaaaadkjfhsjkfsdf jsdflkjsdfksdfkjsd')") {
 //            Log.d("TEST", "call js $it")
 //        }
@@ -278,15 +329,43 @@ class WebActivity : AppCompatActivity() {
     }
 
 
-    @SuppressLint("MissingPermission")
+//    @SuppressLint("MissingPermission")
+//    override fun onRequestPermissionsResult(
+//        requestCode: Int,
+//        permissions: Array<out String>,
+//        grantResults: IntArray
+//    ) {
+//        if (requestCode == LOCATION_REQUEST) {
+//            if (PermissionUtils.canAccessPermission(this)) {
+//                startService()
+//            }
+//        }
+//    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
-        if (requestCode == LOCATION_REQUEST) {
-            if (PermissionUtils.canAccessPermission(this)) {
-                startService()
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            LOCATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    when {
+                        PermissionUtils.isLocationEnabled(this) -> {
+                            setUpLocationListener()
+                        }
+                        else -> {
+                            PermissionUtils.showGPSNotEnabledDialog(this)
+                        }
+                    }
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Permission not granted",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }
