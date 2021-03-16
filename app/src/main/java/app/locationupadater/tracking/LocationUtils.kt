@@ -1,4 +1,4 @@
-package app.locationupadater.location
+package app.locationupadater.tracking
 
 import android.content.Context
 import android.location.Location

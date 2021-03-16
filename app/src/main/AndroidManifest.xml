@@ -23,17 +23,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.LocationUpadater">
-        <activity android:name=".location.MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
 
         <activity android:name=".WebActivity"/>
 
         <activity android:name=".PrinterActivity"/>
+
+        <activity android:name=".tracking.TrackingActivity"/>
 
         <activity
             android:name=".printer.ConnectBluetoothActivity"
@@ -48,12 +43,9 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths" />
         </provider>
-        <service
-            android:name=".LocationService"
-            android:enabled="true" />
 
         <service
-            android:name=".location.MyLocationService"
+            android:name=".tracking.LocationService"
             android:foregroundServiceType="location" />
     </application>
 

@@ -174,63 +174,63 @@ class WebActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_web)
-//        preferences = PreferenceManager.getDefaultSharedPreferences(this)
-//        tickerChannel = ticker(delayMillis = 2_000L, initialDelayMillis = 0)
-//        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager?
-//        requestPermission()
-//        startService()
-//        runJob()
-//        val jsInterface = JavaScriptInterface { url, user, distance ->
-//            Log.d("TEST", "url $url, user $user, dist $distance")
-//            mUrl = url
-//            mUser = user
-//            try {
-//                mDistanceAllow = distance?.toDouble() ?: DEFAULT_DISTANCE
-//            } catch (e: Exception) {
-//            }
-//        }
-//
+        preferences = PreferenceManager.getDefaultSharedPreferences(this)
+        tickerChannel = ticker(delayMillis = 2_000L, initialDelayMillis = 0)
+        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager?
+        requestPermission()
+        startService()
+        runJob()
+        val jsInterface = JavaScriptInterface { url, user, distance ->
+            Log.d("TEST", "url $url, user $user, dist $distance")
+            mUrl = url
+            mUser = user
+            try {
+                mDistanceAllow = distance?.toDouble() ?: DEFAULT_DISTANCE
+            } catch (e: Exception) {
+            }
+        }
+
 //        webview.settings.allowFileAccessFromFileURLs = true
 //        webview.settings.allowUniversalAccessFromFileURLs = true
-//        webview.settings.javaScriptEnabled = true
-//        webview.addJavascriptInterface(jsInterface, "JSInterface")
-//        webview.webChromeClient = object : WebChromeClient() {
-//            override fun onGeolocationPermissionsShowPrompt(
-//                origin: String?,
-//                callback: GeolocationPermissions.Callback?
-//            ) {
-//                callback?.invoke(origin, true, false)
-//            }
-//
-//            override fun onShowFileChooser(
-//                webView: WebView?,
-//                filePathCallback: ValueCallback<Array<Uri>>?,
-//                fileChooserParams: FileChooserParams?
-//            ): Boolean {
-//                mUploadCallbackAboveL = filePathCallback
-//                takePhoto()
-//                return true
-//            }
-//        }
-//
-//        webview.webViewClient = object : WebViewClient() {
-//            override fun shouldOverrideUrlLoading(view: WebView?, url: String?) = false
-//
-//            override fun shouldOverrideUrlLoading(
-//                view: WebView,
-//                request: WebResourceRequest
-//            ): Boolean {
-//                return false
-//            }
-//        }
-//
-//        webview.settings.setGeolocationEnabled(true)
-//
-//        webview.loadUrl("https://catminh.biz/ongbau/")
-//
-//        val intentFilter = IntentFilter()
-//        intentFilter.addAction(LocationService.BROADCAST_ACTION)
-//        registerReceiver(mLocationReceiver, intentFilter)
+        webview.settings.javaScriptEnabled = true
+        webview.addJavascriptInterface(jsInterface, "JSInterface")
+        webview.webChromeClient = object : WebChromeClient() {
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?
+            ) {
+                callback?.invoke(origin, true, false)
+            }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                mUploadCallbackAboveL = filePathCallback
+                takePhoto()
+                return true
+            }
+        }
+
+        webview.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?) = false
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                return false
+            }
+        }
+
+        webview.settings.setGeolocationEnabled(true)
+
+        webview.loadUrl("https://catminh.biz/ongbau/")
+
+        val intentFilter = IntentFilter()
+        intentFilter.addAction(LocationService.BROADCAST_ACTION)
+        registerReceiver(mLocationReceiver, intentFilter)
     }
 
     private var locationManager: LocationManager? = null
