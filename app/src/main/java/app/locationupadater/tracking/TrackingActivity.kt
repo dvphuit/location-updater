@@ -22,7 +22,6 @@ import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import app.locationupadater.BuildConfig
 import app.locationupadater.R
-import app.locationupadater.WebActivity
 import app.locationupadater.tracking.LocationService.LocalBinder
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.android.synthetic.main.activity_web.*
@@ -58,21 +57,27 @@ class TrackingActivity : AppCompatActivity() {
         }
     }
 
+    inner class JavaScriptInterface(
+        private val listener: (String?, String?, String?) -> Unit
+    ) {
+        @JavascriptInterface
+        fun prepareTrackingVar(url: String?, user: String?, distanceAllow: String?) {
+            Log.d("TEST", "url $url, user: $user, $distanceAllow")
+            listener(url, user, distanceAllow)
+            startTracking()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         myReceiver = MyReceiver()
         setContentView(R.layout.activity_tracking)
-
-        if (Utils.requestingLocationUpdates(this)) {
-            if (!checkPermissions()) {
-                requestPermissions()
-            }
-        }
+        initWebView()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
-        val jsInterface = WebActivity.JavaScriptInterface { url, user, distance ->
+        val jsInterface = JavaScriptInterface { url, user, distance ->
             Log.d("TEST", "url $url, user $user, dist $distance")
             mUrl = url
             mUser = user
@@ -112,10 +117,14 @@ class TrackingActivity : AppCompatActivity() {
             ): Boolean {
                 return false
             }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                startTracking()
+            }
         }
 
         webview.settings.setGeolocationEnabled(true)
-
         webview.loadUrl("https://catminh.biz/ongbau/")
     }
 
@@ -240,16 +249,16 @@ class TrackingActivity : AppCompatActivity() {
 
     private fun takePhoto() {
         //Set up the camera by specifying the location of the photo storage
-        val filePath: String =
+        val path: String =
             (getExternalFilesDir(Environment.DIRECTORY_PICTURES)?.absolutePath + File.separator)
-        val fileName =
+        val name =
             "IMG_" + DateFormat.format("yyyyMMdd_hhmmss", Calendar.getInstance(Locale.getDefault()))
                 .toString() + ".jpg"
 
         imageUri = FileProvider.getUriForFile(
             this,
             this.applicationContext.packageName.toString() + ".provider",
-            File(filePath + fileName)
+            File(path + name)
         )
 
         val captureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
@@ -260,33 +269,26 @@ class TrackingActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == CAMERA_REQUEST) {
-            if (mUploadCallbackAboveL != null) {
-                chooseAbove(resultCode, data)
-            }
-        }
-    }
-
-    private fun chooseAbove(resultCode: Int, data: Intent?) {
-        if (Activity.RESULT_OK == resultCode) {
-            if (data != null) {
-                val results: Array<Uri>
-                val uriData = data.data
-                if (uriData != null) {
-                    results = arrayOf(uriData)
-                    mUploadCallbackAboveL?.onReceiveValue(results)
+        if (requestCode == CAMERA_REQUEST && Activity.RESULT_OK == resultCode) {
+            mUploadCallbackAboveL?.let {
+                if (data != null) {
+                    val results: Array<Uri>
+                    val uriData = data.data
+                    if (uriData != null) {
+                        results = arrayOf(uriData)
+                        it.onReceiveValue(results)
+                    } else {
+                        it.onReceiveValue(null)
+                    }
                 } else {
-                    mUploadCallbackAboveL?.onReceiveValue(null)
-                }
-            } else {
-                imageUri?.let {
-                    mUploadCallbackAboveL?.onReceiveValue(arrayOf(it))
+                    it.onReceiveValue(arrayOf(imageUri!!))
                 }
             }
+
         } else {
             mUploadCallbackAboveL?.onReceiveValue(null)
+            mUploadCallbackAboveL = null
         }
-        mUploadCallbackAboveL = null
     }
 
 

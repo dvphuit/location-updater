@@ -127,7 +127,6 @@ class LocationService : Service() {
                 mLocationCallback, Looper.myLooper()
             )
         } catch (unlikely: SecurityException) {
-            Utils.setRequestingLocationUpdates(this, false)
             Log.e(TAG, "Lost location permission. Could not request updates. $unlikely")
         }
     }
