@@ -5,6 +5,9 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.*
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.location.Location
 import android.net.Uri
 import android.os.Bundle
@@ -13,6 +16,7 @@ import android.os.IBinder
 import android.provider.MediaStore
 import android.provider.Settings
 import android.text.format.DateFormat
+import android.util.Base64
 import android.util.Log
 import android.webkit.*
 import android.widget.Toast
@@ -21,11 +25,19 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import app.locationupadater.BuildConfig
+import app.locationupadater.MyApp
 import app.locationupadater.R
+import app.locationupadater.printer.ConnectBluetoothActivity
+import app.locationupadater.printer.models.PrintAlignment
+import app.locationupadater.printer.models.PrintFont
+import app.locationupadater.printer.models.ThermalPrinter
 import app.locationupadater.tracking.LocationService.LocalBinder
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.android.synthetic.main.activity_printer.*
 import kotlinx.android.synthetic.main.activity_web.*
-import java.io.File
+import kotlinx.coroutines.*
+import org.json.JSONArray
+import java.io.*
 import java.util.*
 
 class TrackingActivity : AppCompatActivity() {
@@ -35,13 +47,12 @@ class TrackingActivity : AppCompatActivity() {
     private var mService: LocationService? = null
     private var mBound = false
 
-    private var mUrl: String? = null
-    private var mUser: String? = null
-    private var mDistanceAllow: Double = .001
-
-    private var mUploadCallbackAboveL: ValueCallback<Array<Uri>>? = null
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var imageUri: Uri? = null
     private val CAMERA_REQUEST = 11111
+
+    private lateinit var updater: Updater
+    private var billJsonString: String? = null
 
     // Monitors the state of the connection to the service.
     private val mServiceConnection: ServiceConnection = object : ServiceConnection {
@@ -62,9 +73,18 @@ class TrackingActivity : AppCompatActivity() {
     ) {
         @JavascriptInterface
         fun prepareTrackingVar(url: String?, user: String?, distanceAllow: String?) {
-            Log.d("TEST", "url $url, user: $user, $distanceAllow")
+            Log.d("TEST", "prepareTrackingVar -> url: $url, user: $user, $distanceAllow")
             listener(url, user, distanceAllow)
             startTracking()
+        }
+
+        @JavascriptInterface
+        fun printBill(json: String) {
+            billJsonString = json
+            startActivityForResult(
+                Intent(this@TrackingActivity, ConnectBluetoothActivity::class.java),
+                ConnectBluetoothActivity.CONNECT_BLUETOOTH
+            )
         }
     }
 
@@ -73,18 +93,17 @@ class TrackingActivity : AppCompatActivity() {
         myReceiver = MyReceiver()
         setContentView(R.layout.activity_tracking)
         initWebView()
+
+        updater = Updater(webview)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
         val jsInterface = JavaScriptInterface { url, user, distance ->
-            Log.d("TEST", "url $url, user $user, dist $distance")
-            mUrl = url
-            mUser = user
-            try {
-                mDistanceAllow = distance?.toDouble() ?: mDistanceAllow
-            } catch (e: Exception) {
-            }
+            Log.d("TEST", "JSInterface: url $url, user $user, dist $distance")
+            MyApp.user = user
+            MyApp.urlToRequest = url
+            MyApp.distanceAllow = distance?.toDouble() ?: 0.001
         }
 
         webview.settings.javaScriptEnabled = true
@@ -102,8 +121,8 @@ class TrackingActivity : AppCompatActivity() {
                 filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?
             ): Boolean {
-                mUploadCallbackAboveL = filePathCallback
-                takePhoto()
+                fileChooserCallback = filePathCallback
+                accessCamera(fileChooserParams?.isCaptureEnabled ?: true)
                 return true
             }
         }
@@ -130,6 +149,7 @@ class TrackingActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        Utils.showSettingGPSIfNeeded(this)
         bindService(
             Intent(this, LocationService::class.java),
             mServiceConnection,
@@ -180,6 +200,17 @@ class TrackingActivity : AppCompatActivity() {
         )
     }
 
+    private fun accessCamera(isCapture: Boolean) {
+        if (Utils.canAccessCamera(this)) {
+            if (isCapture)
+                takePhoto()
+            else
+                choosePhoto()
+        } else {
+            Utils.requestCameraPermission(this)
+        }
+    }
+
     private fun requestPermissions() {
         val shouldProvideRationale =
             ActivityCompat.shouldShowRequestPermissionRationale(
@@ -215,7 +246,7 @@ class TrackingActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         Log.i(TAG, "onRequestPermissionResult")
-        if (requestCode == REQUEST_PERMISSIONS_REQUEST_CODE) {
+        if (requestCode == Utils.CAM_REQUEST_CODE) {
             when {
                 grantResults.isEmpty() -> {
                     Log.i(TAG, "User interaction was cancelled.")
@@ -247,8 +278,13 @@ class TrackingActivity : AppCompatActivity() {
         }
     }
 
+    private fun choosePhoto() {
+        val photo = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        photo.type = "image/*"
+        startActivityForResult(Intent.createChooser(photo, "Chọn ảnh"), CAMERA_REQUEST)
+    }
+
     private fun takePhoto() {
-        //Set up the camera by specifying the location of the photo storage
         val path: String =
             (getExternalFilesDir(Environment.DIRECTORY_PICTURES)?.absolutePath + File.separator)
         val name =
@@ -267,42 +303,145 @@ class TrackingActivity : AppCompatActivity() {
         startActivityForResult(captureIntent, CAMERA_REQUEST)
     }
 
+    @SuppressLint("SetTextI18n")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == CAMERA_REQUEST && Activity.RESULT_OK == resultCode) {
-            mUploadCallbackAboveL?.let {
-                if (data != null) {
-                    val results: Array<Uri>
-                    val uriData = data.data
-                    if (uriData != null) {
-                        results = arrayOf(uriData)
-                        it.onReceiveValue(results)
-                    } else {
-                        it.onReceiveValue(null)
-                    }
-                } else {
-                    it.onReceiveValue(arrayOf(imageUri!!))
-                }
-            }
+        onFileChosenResult(requestCode, resultCode, data)
 
-        } else {
-            mUploadCallbackAboveL?.onReceiveValue(null)
-            mUploadCallbackAboveL = null
+        if (resultCode == Activity.RESULT_OK && requestCode == ConnectBluetoothActivity.CONNECT_BLUETOOTH) {
+            Toast.makeText(
+                this,
+                "Connected: ${data?.getStringExtra("device_name")}",
+                Toast.LENGTH_SHORT
+            ).show()
+            billJsonString?.let {
+                doPrint(it)
+            }.also { billJsonString = null }
         }
     }
 
+    private fun onFileChosenResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == CAMERA_REQUEST && Activity.RESULT_OK == resultCode) {
+            if (data != null) {
+                val results: Array<Uri>
+                val uriData = data.data
+                if (uriData != null) {
+                    results = arrayOf(uriData)
+                    fileChooserCallback?.onReceiveValue(results)
+                } else {
+                    fileChooserCallback?.onReceiveValue(null)
+                }
+            } else {
+                imageUri?.let {
+                    fileChooserCallback?.onReceiveValue(arrayOf(it))
+                }
+            }
+        } else {
+            fileChooserCallback?.onReceiveValue(null)
+        }
+        fileChooserCallback = null
+    }
+
+    private fun getBitmapFromBase64(base64: String): Bitmap? {
+        val imageAsBytes = Base64.decode(base64, Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(
+            imageAsBytes, 0,
+            imageAsBytes.size
+        )
+        return bitmap.removeAlpha()
+    }
+
+    private fun Bitmap.removeAlpha(backgroundColor: Int = Color.WHITE): Bitmap? {
+        val bitmap = copy(config, true)
+        var alpha: Int
+        var red: Int
+        var green: Int
+        var blue: Int
+        var pixel: Int
+
+        // scan through all pixels
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                pixel = getPixel(x, y)
+                alpha = Color.alpha(pixel)
+                red = Color.red(pixel)
+                green = Color.green(pixel)
+                blue = Color.blue(pixel)
+
+                if (alpha == 0) {
+                    // if pixel is full transparent then
+                    // replace it by solid background color
+                    bitmap.setPixel(x, y, backgroundColor)
+                } else {
+                    // if pixel is partially transparent then
+                    // set pixel full opaque
+                    val color = Color.argb(
+                        255,
+                        red,
+                        green,
+                        blue
+                    )
+                    bitmap.setPixel(x, y, color)
+                }
+            }
+        }
+
+        return bitmap
+    }
+
+    private fun doPrint(json: String) {
+        val bills = JSONArray(json.substring(1, json.lastIndex).replace("\\", ""))
+        val printer = ThermalPrinter.instance
+        for (i in 0 until bills.length()) {
+            printer.writeImage(BitmapFactory.decodeResource(resources, R.drawable.head))
+            val bill = bills.getJSONArray(i)
+            for (j in 0 until bill.length()) {
+                val obj = bill.getJSONObject(j)
+                when (obj.getString("key")) {
+                    "title" -> {
+                        printer.write(
+                            obj.getString("value"),
+                            PrintAlignment.CENTER,
+                            PrintFont.BOLD
+                        )
+                    }
+                    "center_text" -> {
+                        printer.write(
+                            obj.getString("value"),
+                            PrintAlignment.CENTER,
+                            PrintFont.NORMAL
+                        )
+                    }
+                    "hr" -> {
+                        printer.fillLineWith('-')
+                    }
+                    "content" -> {
+                        val value = obj.getJSONArray("value")
+                        printer.writeWrap(
+                            value.getString(0).toLowerCase(Locale.ROOT).capitalize(Locale.ROOT),
+                            value.getString(1)
+                        )
+                    }
+                    "img" -> {
+                        val bitMap = getBitmapFromBase64(obj.getString("value"))
+                        bitMap?.let {
+                            printer.writeImage(bitMap)
+                        }
+                    }
+                }
+            }
+        }
+        printer.print()
+    }
 
     inner class MyReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val location = intent.getParcelableExtra<Location>(LocationService.EXTRA_LOCATION)
-            if (location != null) {
-                Toast.makeText(
-                    this@TrackingActivity,
-                    Utils.getLocationText(location),
-                    Toast.LENGTH_SHORT
-                ).show()
+            location?.let {
+                updater.tracking(it.latitude, it.longitude)
             }
         }
     }
+
 
 }

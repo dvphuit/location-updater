@@ -1,7 +1,5 @@
 package app.locationupadater.tracking
 
-import app.locationupadater.R
-
 import android.app.*
 import android.content.Context
 import android.content.Intent
@@ -12,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import app.locationupadater.MainActivity
+import app.locationupadater.R
 import com.google.android.gms.location.*
 
 class LocationService : Service() {
@@ -29,6 +28,7 @@ class LocationService : Service() {
         private val TAG = LocationService::class.java.simpleName
     }
 
+    private lateinit var updater: Updater
 
     private val mBinder: IBinder = LocalBinder()
 
@@ -43,6 +43,7 @@ class LocationService : Service() {
     private var mLocation: Location? = null
 
     override fun onCreate() {
+        updater = Updater()
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mLocationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
@@ -216,6 +217,7 @@ class LocationService : Service() {
 
         // Update notification content if running as a foreground service.
         if (serviceIsRunningInForeground(this)) {
+            updater.tracking(location.latitude, location.longitude)
             mNotificationManager!!.notify(NOTIFICATION_ID, getNotification())
         }
     }
@@ -232,7 +234,7 @@ class LocationService : Service() {
             get() = this@LocationService
     }
 
-    fun serviceIsRunningInForeground(context: Context): Boolean {
+    private fun serviceIsRunningInForeground(context: Context): Boolean {
         val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         for (service in manager.getRunningServices(Int.MAX_VALUE)) {
             if (javaClass.name == service.service.className) {

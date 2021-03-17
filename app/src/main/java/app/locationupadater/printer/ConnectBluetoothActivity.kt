@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -111,14 +112,7 @@ class ConnectBluetoothActivity : AppCompatActivity() {
         if (pairedDevice.isNotEmpty()) {
             for (device in pairedDevice) {
                 deviceAdapter.addDevice(device)
-                println("xxxx printer name : " + device.name)
-                //EP5802AI is the name for your bluetooth printer
-                //the printer should be paired in order to scanable
-//                if (device.name.equals("GPTV-58B1")) {
-//                    bluetoothDevice = device
-//                    pushInfo("Bluetooth device found!")
-//                    openBluetooth()
-//                }
+                Log.d("TEST","device name ${device.name}")
             }
         }
         bluetoothAdapter.startDiscovery()

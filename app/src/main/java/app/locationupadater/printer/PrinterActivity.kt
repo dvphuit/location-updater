@@ -1,9 +1,11 @@
-package app.locationupadater
+package app.locationupadater.printer
 
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
@@ -11,6 +13,7 @@ import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import app.locationupadater.R
 import app.locationupadater.printer.ConnectBluetoothActivity
 import app.locationupadater.printer.models.PrintAlignment
 import app.locationupadater.printer.models.PrintFont
