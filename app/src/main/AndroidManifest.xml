@@ -27,24 +27,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LocationUpadater">
 
-        <activity android:name="cuongdev.app.smartview.MainActivity">
-<!--            <intent-filter>-->
-<!--                <action android:name="android.intent.action.MAIN" />-->
-
-<!--                <category android:name="android.intent.category.LAUNCHER" />-->
-<!--            </intent-filter>-->
-        </activity>
-
-        <activity android:name="cuongdev.app.smartview.printer.BluetoothDemo">
-<!--            <intent-filter>-->
-<!--                <action android:name="android.intent.action.MAIN" />-->
-
-<!--                <category android:name="android.intent.category.LAUNCHER" />-->
-<!--            </intent-filter>-->
-        </activity>
-        <activity android:name="cuongdev.app.smartview.WebActivity"/>
-
-        <activity android:name="cuongdev.app.smartview.printer.PrinterActivity"/>
 
         <activity android:name="cuongdev.app.smartview.tracking.TrackingActivity">
             <intent-filter>
@@ -54,6 +36,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name="cuongdev.app.smartview.printer.BluetoothDemo"/>
         <activity
             android:name="cuongdev.app.smartview.printer.ConnectBluetoothActivity"
             android:theme="@style/Theme.AppCompat.Light.DarkActionBar" />

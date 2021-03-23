@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    tools:context=".MainActivity">
+    tools:context=".tracking.TrackingActivity">
 
     <LinearLayout
         android:id="@+id/inputLayout"
@@ -16,7 +16,7 @@
             android:id="@+id/inLink"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_margin="8dp"
+            android:layout_margin="4dp"
             android:layout_weight="1"
             android:background="@drawable/primary_input_bg"
             android:hint="Link"
@@ -25,15 +25,46 @@
         <Button
             android:id="@+id/btSend"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="8dp"
+            android:layout_height="match_parent"
+            android:layout_marginHorizontal="4dp"
             android:text="SEND" />
     </LinearLayout>
 
-    <WebView
-        android:id="@+id/webview"
+    <LinearLayout
+        android:id="@+id/frame"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/digital_counter_7"
+            android:text="23-03-2021"
+            android:textColor="#F50057"
+            android:textSize="40sp" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="16dp" />
+
+        <TextView
+            android:id="@+id/tvTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/digital_counter_7"
+            android:text="8:25"
+            android:textColor="#00E676"
+            android:textSize="100sp" />
+    </LinearLayout>
+
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="100dp"
         android:layout_weight="1" />
 
 </LinearLayout>

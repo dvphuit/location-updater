@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
+import com.google.android.material.snackbar.Snackbar
 import cuongdev.app.smartview.BuildConfig
 import cuongdev.app.smartview.MyApp
 import cuongdev.app.smartview.R
@@ -39,12 +40,13 @@ import cuongdev.app.smartview.printer.models.PrintAlignment
 import cuongdev.app.smartview.printer.models.PrintFont
 import cuongdev.app.smartview.printer.models.ThermalPrinter
 import cuongdev.app.smartview.tracking.LocationService.LocalBinder
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.android.synthetic.main.activity_tracking.*
-import kotlinx.android.synthetic.main.activity_web.webview
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ticker
 import org.json.JSONArray
 import java.io.File
 import java.util.*
+
 
 const val WEB_URL = "WEB_URL"
 
@@ -77,8 +79,9 @@ class TrackingActivity : AppCompatActivity() {
         myReceiver = MyReceiver()
         setContentView(R.layout.activity_tracking)
         initInputs()
+        initDateTimeView()
         initWebView()
-        updater = Updater(webview)
+        updater = Updater(webView)
     }
 
     private fun initInputs() {
@@ -88,23 +91,42 @@ class TrackingActivity : AppCompatActivity() {
             pref.edit {
                 putString(WEB_URL, url).apply()
             }
-            webview.loadUrl("https://$url")
+            webView.loadUrl("https://$url")
         }
         inLink.setText(pref.getString(WEB_URL, ""))
     }
 
+    private val tickerChannel = ticker(delayMillis = 1_000, initialDelayMillis = 0)
+
+    @SuppressLint("SetTextI18n")
+    private fun initDateTimeView() {
+        GlobalScope.launch(Dispatchers.Main) {
+            for (event in tickerChannel) {
+                val c = Calendar.getInstance()
+                val day = c[Calendar.DAY_OF_MONTH]
+                val month = c[Calendar.MONTH]
+                val year = c[Calendar.YEAR]
+                val min = c[Calendar.MINUTE]
+                val hour = c[Calendar.HOUR]
+                val sec = c[Calendar.SECOND]
+                tvDate.text = "$day-$month-$year"
+                tvTime.text = "${hour}:$min:$sec"
+            }
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
-        val jsInterface = JavaScriptInterface { url, user, distance ->
-            Log.d("TEST", "JSInterface: url $url, user $user, dist $distance")
-            MyApp.user = user
-            MyApp.urlToRequest = url
-            MyApp.distanceAllow = distance?.toDouble() ?: 0.001
+        val jsInterface = JavaScriptInterface { trackingOpt ->
+            Log.d("TEST", "JSInterface: $trackingOpt")
+//            MyApp.user = user
+//            MyApp.urlToRequest = url
+//            MyApp.distanceAllow = distance?.toDouble() ?: 0.001
         }
 
-        webview.settings.javaScriptEnabled = true
-        webview.addJavascriptInterface(jsInterface, "JSInterface")
-        webview.webChromeClient = object : WebChromeClient() {
+        webView.settings.javaScriptEnabled = true
+        webView.addJavascriptInterface(jsInterface, "JSInterface")
+        webView.webChromeClient = object : WebChromeClient() {
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -123,7 +145,7 @@ class TrackingActivity : AppCompatActivity() {
             }
         }
 
-        webview.webViewClient = object : WebViewClient() {
+        webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?) = false
 
             override fun shouldOverrideUrlLoading(
@@ -140,7 +162,7 @@ class TrackingActivity : AppCompatActivity() {
             }
 
         }
-        webview.settings.setGeolocationEnabled(true)
+        webView.settings.setGeolocationEnabled(true)
 //        webview.loadUrl("https://catminh.biz/ongbau/")
     }
 
@@ -178,13 +200,16 @@ class TrackingActivity : AppCompatActivity() {
     }
 
     inner class JavaScriptInterface(
-        private val listener: (String?, String?, String?) -> Unit
+        private val listener: (String?) -> Unit
     ) {
         @JavascriptInterface
-        fun prepareTrackingVar(url: String?, user: String?, distanceAllow: String?) {
-            Log.d("TEST", "prepareTrackingVar -> url: $url, user: $user, $distanceAllow")
-            listener(url, user, distanceAllow)
-            startTracking()
+        fun tracking(options: String) {
+            Log.d("TEST", "tracking -> $options")
+//            listener(opt)
+//            startTracking()
+//            webView.evaluateJavascript("javascript:Tracking()"){
+//                Log.d("TEST", "on click $it")
+//            }
         }
 
         @JavascriptInterface

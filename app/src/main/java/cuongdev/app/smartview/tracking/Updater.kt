@@ -81,52 +81,6 @@ class Updater(private val webView: WebView? = null) {
         return earthRadius * c
     }
 
-    private suspend fun postLocation(params: String) = withContext(Dispatchers.IO) {
-        val url = URL(MyApp.urlToRequest)
-        try {
-            val conn = url.openConnection() as HttpURLConnection
-            conn.readTimeout = 15000
-            conn.connectTimeout = 15000
-            conn.doOutput = true
-            conn.requestMethod = "POST"
-
-            val os = conn.outputStream
-            val writer = BufferedWriter(OutputStreamWriter(os, Charsets.UTF_8))
-            writer.write(params)
-
-            val wr = OutputStreamWriter(conn.outputStream)
-            wr.write(params)
-            wr.flush()
-
-
-
-
-            mList = ""
-        } catch (e: IOException) {
-            Log.e("TEST", e.localizedMessage ?: "request error")
-        }
-    }
-
-
-    private fun postData(urlStr: String, params: String) {
-        Log.d("TEST", "tracking -> ${urlStr}?$params")
-        val postData: ByteArray = params.toByteArray(StandardCharsets.UTF_8)
-        val postDataLength = postData.size
-        val url = URL(urlStr)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.doOutput = true
-        conn.instanceFollowRedirects = false
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-        conn.setRequestProperty("charset", "utf-8")
-        conn.setRequestProperty("Content-Length", postDataLength.toString())
-        conn.useCaches = false
-        DataOutputStream(conn.outputStream).use { wr -> wr.write(postData) }
-        mList = ""
-
-
-    }
-
     private fun post(urlStr: String, params: String): String? {
         var response: String? = null
 
@@ -159,19 +113,6 @@ class Updater(private val webView: WebView? = null) {
         }
 
         return response;
-    }
-
-
-    private fun getQuery(params: List<Pair<String, String>>): String {
-        val result = StringBuilder()
-        var first = true
-        for (pair in params) {
-            if (first) first = false else result.append("&")
-            result.append(URLEncoder.encode(pair.first, "UTF-8"))
-            result.append("=")
-            result.append(URLEncoder.encode(pair.second, "UTF-8"))
-        }
-        return result.toString()
     }
 
 }

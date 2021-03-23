@@ -9,7 +9,6 @@ import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import cuongdev.app.smartview.MainActivity
 import cuongdev.app.smartview.R
 import com.google.android.gms.location.*
 
@@ -163,7 +162,7 @@ class LocationService : Service() {
         // The PendingIntent to launch activity.
         val activityPendingIntent = PendingIntent.getActivity(
             this, 0,
-            Intent(this, MainActivity::class.java), 0
+            Intent(this, TrackingActivity::class.java), 0
         )
         val builder = NotificationCompat.Builder(this)
             .addAction(
