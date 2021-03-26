@@ -13,11 +13,14 @@ import android.view.inputmethod.InputMethodManager
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.preference.PreferenceManager
+import com.google.android.material.snackbar.Snackbar
+import cuongdev.app.smartview.R
 
 
 internal object Utils {
 
     const val CAM_REQUEST_CODE = 999
+    const val GPS_REQUEST_CODE = 1000
 
     private const val KEY_REQUESTING_LOCATION_UPDATES = "requesting_location_updates"
 
@@ -36,29 +39,21 @@ internal object Utils {
             .apply()
     }
 
-    fun showSettingGPSIfNeeded(context: Context) {
+    fun isGPSEnabled(context: Context): Boolean {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager?
-        var gps_enabled = false
-        var network_enabled = false
-        try {
-            gps_enabled = lm!!.isProviderEnabled(LocationManager.GPS_PROVIDER)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        try {
-            network_enabled = lm!!.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        if (!gps_enabled && !network_enabled) {
-            AlertDialog.Builder(context)
-                .setMessage("Cần bật GPS để sử dụng tính năng này.")
-                .setCancelable(false)
-                .setPositiveButton("Cài đặt") { _, _ ->
-                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                }
-                .show()
-        }
+        val isGPSEnabled = lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) ?: false
+        val isNetworkEnabled = lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ?: false
+        return isGPSEnabled && isNetworkEnabled
+    }
+
+    fun showSettingGPS(context: Context) {
+        AlertDialog.Builder(context)
+            .setMessage("Cần bật GPS để sử dụng tính năng này.")
+            .setCancelable(false)
+            .setPositiveButton("Cài đặt") { _, _ ->
+                context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            }
+            .show()
     }
 
 
@@ -83,16 +78,50 @@ internal object Utils {
         )
     }
 
+    fun canAccessGPS(context: Context): Boolean {
+        return PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+    }
+
+    fun requestGPSPermissions(activity: Activity) {
+        val shouldProvideRationale =
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+
+        if (shouldProvideRationale) {
+            Snackbar.make(
+                activity.findViewById(R.id.activity_tracking),
+                R.string.permission_rationale,
+                Snackbar.LENGTH_INDEFINITE
+            ).setAction(R.string.ok) { // Request permission
+                ActivityCompat.requestPermissions(
+                    activity,
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                    GPS_REQUEST_CODE
+                )
+            }.show()
+
+        } else {
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                GPS_REQUEST_CODE
+            )
+        }
+    }
+
     fun canAccessCamera(context: Context): Boolean {
         return PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
             context,
             Manifest.permission.CAMERA
-        )
-                && PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
+        ) && PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
             context,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
-        )
-                && PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
+        ) && PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
             context,
             Manifest.permission.READ_EXTERNAL_STORAGE
         )

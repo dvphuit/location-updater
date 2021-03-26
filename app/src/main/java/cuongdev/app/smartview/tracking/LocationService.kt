@@ -9,8 +9,9 @@ import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import cuongdev.app.smartview.R
 import com.google.android.gms.location.*
+import cuongdev.app.smartview.MyApp
+import cuongdev.app.smartview.R
 
 class LocationService : Service() {
 
@@ -18,16 +19,18 @@ class LocationService : Service() {
         private const val PACKAGE_NAME = "com.google.android.gms.location.app.tracking"
         const val ACTION_BROADCAST = "$PACKAGE_NAME.broadcast"
         const val EXTRA_LOCATION = "$PACKAGE_NAME.location"
-        private const val EXTRA_STARTED_FROM_NOTIFICATION = "$PACKAGE_NAME.started_from_notification"
-        private const val UPDATE_INTERVAL_IN_MILLISECONDS: Long = 10000
-        private const val FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS = UPDATE_INTERVAL_IN_MILLISECONDS / 2
+        private const val EXTRA_STARTED_FROM_NOTIFICATION =
+            "$PACKAGE_NAME.started_from_notification"
+        private const val UPDATE_INTERVAL_IN_MILLISECONDS: Long = 5000
+        private const val FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
+            UPDATE_INTERVAL_IN_MILLISECONDS / 2
         private const val NOTIFICATION_ID = 12345678
         private const val CHANNEL_ID = "channel_01"
 
         private val TAG = LocationService::class.java.simpleName
     }
 
-    private lateinit var updater: Updater
+    private lateinit var tracker: Updater
 
     private val mBinder: IBinder = LocalBinder()
 
@@ -42,7 +45,6 @@ class LocationService : Service() {
     private var mLocation: Location? = null
 
     override fun onCreate() {
-        updater = Updater()
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mLocationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
@@ -88,7 +90,7 @@ class LocationService : Service() {
         mChangingConfiguration = true
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
+    override fun onBind(intent: Intent?): IBinder {
         Log.i(TAG, "in onBind()")
         stopForeground(true)
         mChangingConfiguration = false
@@ -116,11 +118,11 @@ class LocationService : Service() {
         mServiceHandler!!.removeCallbacksAndMessages(null)
     }
 
-
     fun requestLocationUpdates() {
         Log.i(TAG, "Requesting location updates")
         Utils.setRequestingLocationUpdates(this, true)
         startService(Intent(applicationContext, LocationService::class.java))
+        this.tracker = Updater()
         try {
             mFusedLocationClient!!.requestLocationUpdates(
                 mLocationRequest,
@@ -178,7 +180,7 @@ class LocationService : Service() {
             .setContentText(text)
             .setContentTitle(Utils.getLocationTitle(this))
             .setOngoing(true)
-            .setPriority(NotificationManager.IMPORTANCE_HIGH)
+            .setPriority(NotificationManager.IMPORTANCE_LOW)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setTicker(text)
             .setWhen(System.currentTimeMillis())
@@ -208,7 +210,7 @@ class LocationService : Service() {
     private fun onNewLocation(location: Location) {
         Log.i(TAG, "New location: $location")
         mLocation = location
-
+        tracker.onLocationChanged(location.latitude, location.longitude)
         // Notify anyone listening for broadcasts about the new location.
         val intent = Intent(ACTION_BROADCAST)
         intent.putExtra(EXTRA_LOCATION, location)
@@ -216,16 +218,17 @@ class LocationService : Service() {
 
         // Update notification content if running as a foreground service.
         if (serviceIsRunningInForeground(this)) {
-            updater.tracking(location.latitude, location.longitude)
             mNotificationManager!!.notify(NOTIFICATION_ID, getNotification())
         }
     }
 
     private fun createLocationRequest() {
         mLocationRequest = LocationRequest.create()
-        mLocationRequest!!.interval = UPDATE_INTERVAL_IN_MILLISECONDS
-        mLocationRequest!!.fastestInterval = FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS
-        mLocationRequest!!.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        mLocationRequest?.apply {
+            interval = MyApp.trackingOpt?.interval ?: UPDATE_INTERVAL_IN_MILLISECONDS
+            fastestInterval = MyApp.trackingOpt?.interval ?: FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
     }
 
     inner class LocalBinder : Binder() {

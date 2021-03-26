@@ -1,13 +1,8 @@
 package cuongdev.app.smartview.tracking
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothAdapter.ACTION_DISCOVERY_FINISHED
-import android.bluetooth.BluetoothDevice
 import android.content.*
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -17,24 +12,22 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
 import android.provider.MediaStore
-import android.provider.Settings
 import android.text.format.DateFormat
 import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.webkit.*
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import com.google.android.material.snackbar.Snackbar
-import cuongdev.app.smartview.BuildConfig
+import com.google.gson.Gson
 import cuongdev.app.smartview.MyApp
 import cuongdev.app.smartview.R
+import cuongdev.app.smartview.model.TrackingOption
 import cuongdev.app.smartview.printer.ConnectBluetoothActivity
 import cuongdev.app.smartview.printer.models.PrintAlignment
 import cuongdev.app.smartview.printer.models.PrintFont
@@ -49,41 +42,57 @@ import java.util.*
 
 
 const val WEB_URL = "WEB_URL"
+const val CAMERA_REQUEST = 11111
 
 class TrackingActivity : AppCompatActivity() {
     private val TAG = TrackingActivity::class.java.simpleName
-    private val REQUEST_PERMISSIONS_REQUEST_CODE = 34
-    private var myReceiver: MyReceiver? = null
     private var mService: LocationService? = null
     private var mBound = false
 
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var imageUri: Uri? = null
-    private val CAMERA_REQUEST = 11111
+    private var isCapture = true
 
-    private lateinit var updater: Updater
     private var billJsonString: String? = null
 
     private val pref: SharedPreferences by lazy {
         PreferenceManager.getDefaultSharedPreferences(this)
     }
 
-    private val bluetoothAdapter by lazy {
-        BluetoothAdapter.getDefaultAdapter()
-    }
+//    private var myReceiver: MyReceiver? = null
+//
+//    inner class MyReceiver : BroadcastReceiver() {
+//        override fun onReceive(context: Context, intent: Intent) {
+//            val location = intent.getParcelableExtra<Location>(LocationService.EXTRA_LOCATION)
+//            location?.let {
+//                tracker.onLocationChanged(it.latitude, it.longitude)
+//            }
+//        }
+//    }
 
-    private val devices = mutableListOf<BluetoothDevice>()
+    private val mServiceConnection: ServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, service: IBinder) {
+            val binder = service as LocalBinder
+            mService = binder.service
+            mBound = true
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            mService = null
+            mBound = false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        myReceiver = MyReceiver()
+//        myReceiver = MyReceiver()
         setContentView(R.layout.activity_tracking)
         initInputs()
         initDateTimeView()
         initWebView()
-        updater = Updater(webView)
     }
 
+    //region input
     private fun initInputs() {
         btSend.setOnClickListener {
             Utils.hideKeyboard(this)
@@ -95,14 +104,16 @@ class TrackingActivity : AppCompatActivity() {
         }
         inLink.setText(pref.getString(WEB_URL, ""))
     }
+    //endregion
 
+    //region clock
     private val tickerChannel = ticker(delayMillis = 1_000, initialDelayMillis = 0)
 
     @SuppressLint("SetTextI18n")
     private fun initDateTimeView() {
         GlobalScope.launch(Dispatchers.Main) {
             for (event in tickerChannel) {
-                val c = Calendar.getInstance()
+                val c = Calendar.getInstance(Locale.getDefault())
                 val day = c[Calendar.DAY_OF_MONTH]
                 val month = c[Calendar.MONTH]
                 val year = c[Calendar.YEAR]
@@ -114,18 +125,13 @@ class TrackingActivity : AppCompatActivity() {
             }
         }
     }
+    //endregion
 
+    //region setup webview
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
-        val jsInterface = JavaScriptInterface { trackingOpt ->
-            Log.d("TEST", "JSInterface: $trackingOpt")
-//            MyApp.user = user
-//            MyApp.urlToRequest = url
-//            MyApp.distanceAllow = distance?.toDouble() ?: 0.001
-        }
-
         webView.settings.javaScriptEnabled = true
-        webView.addJavascriptInterface(jsInterface, "JSInterface")
+        webView.addJavascriptInterface(JavaScriptInterface(), "JSInterface")
         webView.webChromeClient = object : WebChromeClient() {
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
@@ -140,7 +146,8 @@ class TrackingActivity : AppCompatActivity() {
                 fileChooserParams: FileChooserParams?
             ): Boolean {
                 fileChooserCallback = filePathCallback
-                accessCamera(fileChooserParams?.isCaptureEnabled ?: true)
+                isCapture = fileChooserParams?.isCaptureEnabled ?: true
+                accessCamera()
                 return true
             }
         }
@@ -157,59 +164,19 @@ class TrackingActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                startTracking()
                 inputLayout.visibility = View.GONE
             }
 
         }
         webView.settings.setGeolocationEnabled(true)
-//        webview.loadUrl("https://catminh.biz/ongbau/")
     }
 
-
-    private val bluetoothReceiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent) {
-            val action = intent.action
-            if (BluetoothDevice.ACTION_FOUND == action) {
-                val device =
-                    intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                Log.d("TEST", "device found ${device?.name}")
-                if (device != null && !device.name.isNullOrEmpty()) {
-                    devices.add(device)
-                    showDevices(devices)
-                }
-            }
-            if (ACTION_DISCOVERY_FINISHED == action) {
-                Log.d("TEST", "finished")
-            }
-        }
-    }
-
-    // Monitors the state of the connection to the service.
-    private val mServiceConnection: ServiceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            val binder = service as LocalBinder
-            mService = binder.service
-            mBound = true
-        }
-
-        override fun onServiceDisconnected(name: ComponentName) {
-            mService = null
-            mBound = false
-        }
-    }
-
-    inner class JavaScriptInterface(
-        private val listener: (String?) -> Unit
-    ) {
+    inner class JavaScriptInterface() {
         @JavascriptInterface
         fun tracking(options: String) {
-            Log.d("TEST", "tracking -> $options")
-//            listener(opt)
-//            startTracking()
-//            webView.evaluateJavascript("javascript:Tracking()"){
-//                Log.d("TEST", "on click $it")
-//            }
+            MyApp.trackingOpt = Gson().fromJson(options, TrackingOption::class.java)
+            Log.d("TEST", MyApp.trackingOpt.toString())
+            startTracking()
         }
 
         @JavascriptInterface
@@ -219,93 +186,25 @@ class TrackingActivity : AppCompatActivity() {
                 Intent(this@TrackingActivity, ConnectBluetoothActivity::class.java),
                 ConnectBluetoothActivity.CONNECT_BLUETOOTH
             )
-
-//            devices.clear()
-//            val intentFilter = IntentFilter(BluetoothDevice.ACTION_FOUND)
-//            registerReceiver(bluetoothReceiver, intentFilter)
-//            bluetoothAdapter.startDiscovery()
-//            registerReceiver(bluetoothReceiver,  IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED))
         }
     }
-
-
-    private val builder: AlertDialog.Builder by lazy {
-        AlertDialog.Builder(this@TrackingActivity).apply {
-            title = "Chọn máy in"
-            setPositiveButton("Đóng") { dialog, i ->
-                dialog.dismiss()
-            }
-        }
-    }
-
-    private fun showDevices(devices: List<BluetoothDevice>) {
-        val devicesName = devices.map { it.name }.toTypedArray()
-        if (devicesName.isNotEmpty()) {
-            builder.setSingleChoiceItems(devicesName, -1) { _, i ->
-                Toast.makeText(this@TrackingActivity, devicesName[i], Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            builder.setMessage("Đang dò thiết bị...")
-        }
-        builder.create().show()
-    }
-
-
-    override fun onStart() {
-        super.onStart()
-        Utils.showSettingGPSIfNeeded(this)
-        bindService(
-            Intent(this, LocationService::class.java),
-            mServiceConnection,
-            Context.BIND_AUTO_CREATE
-        )
-    }
-
+    //endregion
 
     private fun startTracking() {
-        if (!checkPermissions()) {
-            requestPermissions()
-        } else {
+        if (!Utils.isGPSEnabled(this)) {
+            Utils.showSettingGPS(this)
+            return
+        }
+
+        if (Utils.canAccessGPS(this)) {
             mService!!.requestLocationUpdates()
+        } else {
+            Utils.requestGPSPermissions(this)
         }
     }
 
-    private fun stopTracking() {
-        mService!!.removeLocationUpdates()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            myReceiver!!,
-            IntentFilter(LocationService.ACTION_BROADCAST)
-        )
-    }
-
-    override fun onPause() {
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(myReceiver!!)
-        super.onPause()
-    }
-
-    override fun onStop() {
-        if (mBound) {
-            unbindService(mServiceConnection)
-            mBound = false
-        }
-        super.onStop()
-    }
-
-    /**
-     * Returns the current state of the permissions needed.
-     */
-    private fun checkPermissions(): Boolean {
-        return PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
-            this,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
-    }
-
-    private fun accessCamera(isCapture: Boolean) {
+    //region checkin-photo
+    private fun accessCamera() {
         if (Utils.canAccessCamera(this)) {
             if (isCapture)
                 takePhoto()
@@ -313,73 +212,6 @@ class TrackingActivity : AppCompatActivity() {
                 choosePhoto()
         } else {
             Utils.requestCameraPermission(this)
-        }
-    }
-
-    private fun requestPermissions() {
-        val shouldProvideRationale =
-            ActivityCompat.shouldShowRequestPermissionRationale(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
-
-        if (shouldProvideRationale) {
-            Log.i(TAG, "Displaying permission rationale to provide additional context.")
-            Snackbar.make(
-                findViewById(R.id.activity_tracking),
-                R.string.permission_rationale,
-                Snackbar.LENGTH_INDEFINITE
-            ).setAction(R.string.ok) { // Request permission
-                ActivityCompat.requestPermissions(
-                    this@TrackingActivity,
-                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                    REQUEST_PERMISSIONS_REQUEST_CODE
-                )
-            }.show()
-        } else {
-            ActivityCompat.requestPermissions(
-                this@TrackingActivity,
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                REQUEST_PERMISSIONS_REQUEST_CODE
-            )
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String?>,
-        grantResults: IntArray
-    ) {
-        Log.i(TAG, "onRequestPermissionResult")
-        if (requestCode == Utils.CAM_REQUEST_CODE) {
-            when {
-                grantResults.isEmpty() -> {
-                    Log.i(TAG, "User interaction was cancelled.")
-                }
-                grantResults[0] == PackageManager.PERMISSION_GRANTED -> {
-                    startTracking()
-                }
-                else -> {
-                    // Permission denied.
-                    Snackbar.make(
-                        findViewById(R.id.activity_tracking),
-                        R.string.permission_denied_explanation,
-                        Snackbar.LENGTH_INDEFINITE
-                    )
-                        .setAction(R.string.settings) { // Build intent that displays the App settings screen.
-                            val intent = Intent()
-                            intent.action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
-                            val uri = Uri.fromParts(
-                                "package",
-                                BuildConfig.APPLICATION_ID, null
-                            )
-                            intent.data = uri
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            startActivity(intent)
-                        }
-                        .show()
-                }
-            }
         }
     }
 
@@ -408,23 +240,6 @@ class TrackingActivity : AppCompatActivity() {
         startActivityForResult(captureIntent, CAMERA_REQUEST)
     }
 
-    @SuppressLint("SetTextI18n")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        onFileChosenResult(requestCode, resultCode, data)
-
-        if (resultCode == Activity.RESULT_OK && requestCode == ConnectBluetoothActivity.CONNECT_BLUETOOTH) {
-            Toast.makeText(
-                this,
-                "Connected: ${data?.getStringExtra("device_name")}",
-                Toast.LENGTH_SHORT
-            ).show()
-            billJsonString?.let {
-                doPrint(it)
-            }.also { billJsonString = null }
-        }
-    }
-
     private fun onFileChosenResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == CAMERA_REQUEST && Activity.RESULT_OK == resultCode) {
             if (data != null) {
@@ -446,7 +261,71 @@ class TrackingActivity : AppCompatActivity() {
         }
         fileChooserCallback = null
     }
+    //endregion
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String?>,
+        grantResults: IntArray
+    ) {
+        //permissions denied
+        if (grantResults.isEmpty()) return
+
+        when (requestCode) {
+            Utils.CAM_REQUEST_CODE -> {
+                if (Utils.canAccessCamera(this)) {
+                    if (isCapture)
+                        takePhoto()
+                    else
+                        choosePhoto()
+                } else {
+                    Snackbar.make(
+                        activity_tracking,
+                        R.string.permission_denied_explanation,
+                        Snackbar.LENGTH_INDEFINITE
+                    )
+                        .setAction(R.string.settings) { // Build intent that displays the App settings screen.
+                            Utils.requestCameraPermission(this)
+                        }
+                        .show()
+                }
+            }
+            Utils.GPS_REQUEST_CODE -> {
+                if (Utils.canAccessGPS(this)) {
+                    mService!!.requestLocationUpdates()
+                } else {
+                    Snackbar.make(
+                        activity_tracking,
+                        R.string.permission_denied_explanation,
+                        Snackbar.LENGTH_INDEFINITE
+                    )
+                        .setAction(R.string.settings) { // Build intent that displays the App settings screen.
+                            Utils.requestGPSPermissions(this)
+                        }
+                        .show()
+                }
+            }
+        }
+    }
+
+    @SuppressLint("SetTextI18n")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        onFileChosenResult(requestCode, resultCode, data)
+
+        if (resultCode == Activity.RESULT_OK && requestCode == ConnectBluetoothActivity.CONNECT_BLUETOOTH) {
+            Toast.makeText(
+                this,
+                "Connected: ${data?.getStringExtra("device_name")}",
+                Toast.LENGTH_SHORT
+            ).show()
+            billJsonString?.let {
+                doPrint(it)
+            }.also { billJsonString = null }
+        }
+    }
+
+    //region print
     private fun getBitmapFromBase64(base64: String): Bitmap? {
         val imageAsBytes = Base64.decode(base64, Base64.DEFAULT)
         val bitmap = BitmapFactory.decodeByteArray(
@@ -532,15 +411,38 @@ class TrackingActivity : AppCompatActivity() {
         }
         printer.print()
     }
+    //endregion
 
-    inner class MyReceiver : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val location = intent.getParcelableExtra<Location>(LocationService.EXTRA_LOCATION)
-            location?.let {
-                updater.tracking(it.latitude, it.longitude)
-            }
-        }
+    //region lifecycle logic
+    override fun onStart() {
+        super.onStart()
+        bindService(
+            Intent(this, LocationService::class.java),
+            mServiceConnection,
+            Context.BIND_AUTO_CREATE
+        )
     }
 
+//    override fun onResume() {
+//        super.onResume()
+//        LocalBroadcastManager.getInstance(this).registerReceiver(
+//            myReceiver!!,
+//            IntentFilter(LocationService.ACTION_BROADCAST)
+//        )
+//    }
+//
+//    override fun onPause() {
+//        LocalBroadcastManager.getInstance(this).unregisterReceiver(myReceiver!!)
+//        super.onPause()
+//    }
+
+    override fun onStop() {
+        if (mBound) {
+            unbindService(mServiceConnection)
+            mBound = false
+        }
+        super.onStop()
+    }
+    //endregion
 
 }

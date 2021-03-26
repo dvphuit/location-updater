@@ -1,14 +1,19 @@
 package cuongdev.app.smartview.tracking
 
-import android.util.Log
-import android.webkit.WebView
 import cuongdev.app.smartview.MyApp
-import kotlinx.coroutines.*
-import java.io.*
+import cuongdev.app.smartview.ext.logDebug
+import cuongdev.app.smartview.ext.logError
+import cuongdev.app.smartview.model.TrackingOption
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.ticker
+import kotlinx.coroutines.launch
+import java.io.DataOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.atan2
@@ -19,46 +24,104 @@ import kotlin.math.sqrt
 /**
  * @author dvphu on 17,March,2021
  */
-class Updater(private val webView: WebView? = null) {
+
+class Updater {
+    private val mDebugTag = this.javaClass.simpleName
+
     private val calendar by lazy { Calendar.getInstance() }
     private val formatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
-    private var mLatitude: Double = 0.0
-    private var mLongitude: Double = 0.0
+    private lateinit var reqUrl: String
+    private lateinit var compareLoc: String
+    private lateinit var originLoc: String
+    private lateinit var option: TrackingOption
+    private var allowDist: Double = 0.05
 
-    private var mList: String = ""
-
-    private fun urlEncodeString(param: String, value: String?): String {
-        return URLEncoder.encode(param, "UTF8") + "=" + URLEncoder.encode(value, "UTF8")
+    companion object {
+        private lateinit var tickerChannel: ReceiveChannel<Unit>
+        private var preLat: Double = 0.0
+        private var preLng: Double = 0.0
+        private var listLoc: String = ""
     }
 
-    fun tracking(lat: Double, lng: Double) {
-        if (MyApp.user == null || MyApp.urlToRequest == null) return
-        val distance = calculateDistance(mLatitude, mLongitude, lat, lng)
-        Log.d(
-            "TEST",
-            "new loc [${lat}, ${lng}] => distance = $distance | distanceAllow ${MyApp.distanceAllow}"
-        )
+    init {
+        if (MyApp.trackingOpt == null || MyApp.trackingOpt?.on != 1) {
+            logError(msg = "Tracking option is null or Off. Can't start tracking service!")
+            tickerChannel.cancel()
+        } else {
+            this.option = MyApp.trackingOpt!!
+            this.reqUrl = MyApp.trackingOpt?.url ?: ""
+            this.allowDist = MyApp.trackingOpt?.distanceAllow ?: 0.01
+            this.compareLoc = MyApp.trackingOpt?.location ?: ""
+            this.originLoc = MyApp.trackingOpt?.origin ?: ""
+            val uploadInterval = MyApp.trackingOpt?.uploadInterval ?: 5 * 60 * 1000
+            startTicker(uploadInterval)
+        }
+    }
 
-        if (distance >= MyApp.distanceAllow) {
-            mLatitude = lat
-            mLongitude = lng
-            mList += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
-
-            val params = urlEncodeString("user", MyApp.user) +
-                    "&" + urlEncodeString("list", mList) +
-                    "&" + urlEncodeString("gps", "${lat},${lng}")
-
-
-            webView?.evaluateJavascript("javascript:getLocation()") {
-                Log.d("TEST", "call js $it")
+    fun onLocationChanged(lat: Double, lng: Double) {
+        if (option.on != 1) return
+        logDebug(msg = "on Location changed")
+        option.mode.let {
+            when (it) {
+                "FULL" -> fullTracking(lat, lng)
+                "HALF" -> halfTracking(lat, lng)
+                "AROUND" -> aroundTracking(lat, lng)
             }
-            CoroutineScope(Dispatchers.IO).launch {
-                if (MyApp.user != null && MyApp.urlToRequest != null) {
-                    val result = post(MyApp.urlToRequest!!, params)
-                    Log.d("TEST", "request result: $result")
-                }
+        }
+    }
 
+    private fun fullTracking(lat: Double, lng: Double) {
+        logDebug(msg = "Mode -> FULL")
+        preLat = lat
+        preLng = lng
+        listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+    }
+
+    private fun halfTracking(lat: Double, lng: Double) {
+        val allowDistance = allowDist
+        val distance = calculateDistance(preLat, preLng, lat, lng)
+        logDebug(msg = "Mode -> HALF ---- dist: $distance | allowDist: $allowDistance")
+        if (distance >= allowDistance) {
+            listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+            preLat = lat
+            preLng = lng
+            logDebug(msg = "Store list location: $listLoc")
+        }
+    }
+
+    private fun aroundTracking(lat: Double, lng: Double) {
+        logDebug(msg = "Mode -> AROUND")
+
+        val originLoc = (option.origin ?: "0;0").split(";").map { it.toDouble() }
+        val allowDistance = allowDist
+        val distance = calculateDistance(originLoc[0], originLoc[1], lat, lng)
+
+        if (distance >= allowDistance) {
+            listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+            preLat = lat
+            preLng = lng
+        }
+    }
+
+    private fun startTicker(interval: Long) {
+        tickerChannel = ticker(delayMillis = interval, initialDelayMillis = interval)
+        GlobalScope.launch(Dispatchers.IO) {
+            for (event in tickerChannel) {
+                logDebug(msg = "Start post data")
+                val params = urlEncodeString("user", option.user) +
+                        "&" + urlEncodeString("list", listLoc) +
+                        "&" + urlEncodeString("location", compareLoc) +
+                        "&" + urlEncodeString("gps", "$preLat,$preLng")
+
+                val result = post(reqUrl, params)
+
+                if (result != "1") {
+                    logError(msg = "post data failed")
+                    listLoc = ""
+                } else {
+                    logDebug(msg = "Post data successful")
+                }
             }
         }
     }
@@ -81,8 +144,8 @@ class Updater(private val webView: WebView? = null) {
         return earthRadius * c
     }
 
-    private fun post(urlStr: String, params: String): String? {
-        var response: String? = null
+    private fun post(urlStr: String, params: String): String {
+        val response: String
 
         var conn: HttpURLConnection? = null
         var dos: DataOutputStream? = null
@@ -105,14 +168,21 @@ class Updater(private val webView: WebView? = null) {
 
             inputStream = conn.inputStream;
             val s = Scanner(inputStream).useDelimiter("\\A")
-            response = if (s.hasNext()) s.next() else null
+            response = if (s.hasNext()) s.next() else "0"
         } finally {
             dos?.close()
             inputStream?.close()
             conn?.disconnect()
         }
-
-        return response;
+        return response
     }
 
+    private fun urlEncodeString(param: String, value: String?): String {
+        return URLEncoder.encode(param, "UTF8") + "=" + URLEncoder.encode(value, "UTF8")
+    }
+
+    fun dispose() {
+        tickerChannel.cancel()
+        MyApp.trackingOpt = null
+    }
 }
