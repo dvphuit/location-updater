@@ -1,5 +1,6 @@
 package cuongdev.app.smartview.tracking
 
+import android.util.Log
 import cuongdev.app.smartview.MyApp
 import cuongdev.app.smartview.ext.logDebug
 import cuongdev.app.smartview.ext.logError
@@ -61,7 +62,7 @@ class Updater {
 
     fun onLocationChanged(lat: Double, lng: Double) {
         if (option.on != 1) return
-        logDebug(msg = "on Location changed")
+        logDebug(msg = "on Location changed | ticker ${tickerChannel.isClosedForReceive}")
         option.mode.let {
             when (it) {
                 "FULL" -> fullTracking(lat, lng)
@@ -93,7 +94,7 @@ class Updater {
     private fun aroundTracking(lat: Double, lng: Double) {
         logDebug(msg = "Mode -> AROUND")
 
-        val originLoc = (option.origin ?: "0;0").split(";").map { it.toDouble() }
+        val originLoc = (option.origin ?: "0,0").split(",").map { it.toDouble() }
         val allowDistance = allowDist
         val distance = calculateDistance(originLoc[0], originLoc[1], lat, lng)
 
@@ -101,26 +102,33 @@ class Updater {
             listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
             preLat = lat
             preLng = lng
+            logDebug(msg = "Store list location: $listLoc")
         }
     }
 
     private fun startTicker(interval: Long) {
+        logDebug("startTicker", msg = "interval $interval")
         tickerChannel = ticker(delayMillis = interval, initialDelayMillis = interval)
         GlobalScope.launch(Dispatchers.IO) {
             for (event in tickerChannel) {
-                logDebug(msg = "Start post data")
-                val params = urlEncodeString("user", option.user) +
-                        "&" + urlEncodeString("list", listLoc) +
-                        "&" + urlEncodeString("location", compareLoc) +
-                        "&" + urlEncodeString("gps", "$preLat,$preLng")
-
-                val result = post(reqUrl, params)
-
-                if (result != "1") {
-                    logError(msg = "post data failed")
-                    listLoc = ""
+                logDebug(msg = "===========================================================")
+                logDebug(msg = "Start post data $listLoc")
+                if (listLoc.isEmpty()) {
+                    logDebug(msg = "No data to post")
                 } else {
-                    logDebug(msg = "Post data successful")
+                    val params = urlEncodeString("user", option.user) +
+                            "&" + urlEncodeString("list", listLoc) +
+                            "&" + urlEncodeString("location", compareLoc) +
+                            "&" + urlEncodeString("gps", "$preLat,$preLng")
+
+                    val result = post(reqUrl, params)
+
+                    if (result != "1") {
+                        logError(msg = "post data failed")
+                    } else {
+                        logDebug(msg = "Post data successful: params -> $params")
+                        listLoc = ""
+                    }
                 }
             }
         }

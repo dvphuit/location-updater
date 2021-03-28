@@ -7,11 +7,14 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
 import android.provider.MediaStore
+import android.provider.Settings
 import android.text.format.DateFormat
 import android.util.Base64
 import android.util.Log
@@ -21,12 +24,14 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.MobileAds
 import com.google.android.material.snackbar.Snackbar
 import com.google.gson.Gson
 import cuongdev.app.smartview.MyApp
 import cuongdev.app.smartview.R
+import cuongdev.app.smartview.ext.logDebug
 import cuongdev.app.smartview.model.TrackingOption
 import cuongdev.app.smartview.printer.ConnectBluetoothActivity
 import cuongdev.app.smartview.printer.models.PrintAlignment
@@ -34,8 +39,11 @@ import cuongdev.app.smartview.printer.models.PrintFont
 import cuongdev.app.smartview.printer.models.ThermalPrinter
 import cuongdev.app.smartview.tracking.LocationService.LocalBinder
 import kotlinx.android.synthetic.main.activity_tracking.*
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.ticker
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.io.File
 import java.util.*
@@ -44,7 +52,7 @@ import java.util.*
 const val WEB_URL = "WEB_URL"
 const val CAMERA_REQUEST = 11111
 
-class TrackingActivity : AppCompatActivity() {
+class TrackingActivity : AppCompatActivity(), LocationListener {
     private val TAG = TrackingActivity::class.java.simpleName
     private var mService: LocationService? = null
     private var mBound = false
@@ -55,20 +63,19 @@ class TrackingActivity : AppCompatActivity() {
 
     private var billJsonString: String? = null
 
+    private var locationManager: LocationManager? = null
+
+    override fun onLocationChanged(loc: Location) {
+        logDebug("TEST", msg = loc.toString())
+        GlobalScope.launch(Dispatchers.Main) {
+            webView.evaluateJavascript("javascript:setGPS(\"${loc.latitude},${loc.longitude}\")") { }
+        }
+        locationManager?.removeUpdates(this)
+    }
+
     private val pref: SharedPreferences by lazy {
         PreferenceManager.getDefaultSharedPreferences(this)
     }
-
-//    private var myReceiver: MyReceiver? = null
-//
-//    inner class MyReceiver : BroadcastReceiver() {
-//        override fun onReceive(context: Context, intent: Intent) {
-//            val location = intent.getParcelableExtra<Location>(LocationService.EXTRA_LOCATION)
-//            location?.let {
-//                tracker.onLocationChanged(it.latitude, it.longitude)
-//            }
-//        }
-//    }
 
     private val mServiceConnection: ServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
@@ -85,8 +92,14 @@ class TrackingActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-//        myReceiver = MyReceiver()
+
         setContentView(R.layout.activity_tracking)
+        MobileAds.initialize(this) {
+            logDebug("TEST", msg = it.adapterStatusMap.toString())
+        }
+        val adRequest = AdRequest.Builder().build()
+//        adView.loadAd(adRequest)
+
         initInputs()
         initDateTimeView()
         initWebView()
@@ -95,8 +108,8 @@ class TrackingActivity : AppCompatActivity() {
     //region input
     private fun initInputs() {
         btSend.setOnClickListener {
-            Utils.hideKeyboard(this)
             val url = inLink.text.trim().toString()
+            Utils.hideKeyboard(this@TrackingActivity)
             pref.edit {
                 putString(WEB_URL, url).apply()
             }
@@ -165,13 +178,15 @@ class TrackingActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 inputLayout.visibility = View.GONE
+                layoutTime.visibility = View.GONE
+                webView.visibility = View.VISIBLE
             }
 
         }
         webView.settings.setGeolocationEnabled(true)
     }
 
-    inner class JavaScriptInterface() {
+    inner class JavaScriptInterface {
         @JavascriptInterface
         fun tracking(options: String) {
             MyApp.trackingOpt = Gson().fromJson(options, TrackingOption::class.java)
@@ -186,6 +201,54 @@ class TrackingActivity : AppCompatActivity() {
                 Intent(this@TrackingActivity, ConnectBluetoothActivity::class.java),
                 ConnectBluetoothActivity.CONNECT_BLUETOOTH
             )
+        }
+
+        @SuppressLint("HardwareIds")
+        @JavascriptInterface
+        fun getUUID() {
+            val uuid = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+
+            GlobalScope.launch(Dispatchers.Main) {
+                webView.evaluateJavascript("javascript:setUUID(\"$uuid\")") {
+                    logDebug(msg = "set uuid $uuid")
+                }
+            }
+        }
+
+        @SuppressLint("MissingPermission")
+        @JavascriptInterface
+        fun getGPS() {
+//            var loc: Location? = null
+//            try {
+//                locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+//                val gpsLoc = locationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+//                val netLoc =
+//                    locationManager!!.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+//                if (gpsLoc != null) {
+//                    loc = gpsLoc
+//                } else if (netLoc != null) {
+//                    loc = netLoc
+//                }
+//                logDebug("TEST", msg = loc.toString())
+//                GlobalScope.launch(Dispatchers.Main) {
+//                    webView.evaluateJavascript("javascript:setGPS(\"${loc?.latitude},${loc?.longitude}\")") {
+//                        logDebug(msg = "set GPS $loc")
+//                    }
+//                }
+//
+//            } catch (e: Exception) {
+//                e.printStackTrace()
+//            }
+
+
+            locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            locationManager?.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                0,
+                0f,
+                this@TrackingActivity
+            )
+
         }
     }
     //endregion
@@ -422,19 +485,6 @@ class TrackingActivity : AppCompatActivity() {
             Context.BIND_AUTO_CREATE
         )
     }
-
-//    override fun onResume() {
-//        super.onResume()
-//        LocalBroadcastManager.getInstance(this).registerReceiver(
-//            myReceiver!!,
-//            IntentFilter(LocationService.ACTION_BROADCAST)
-//        )
-//    }
-//
-//    override fun onPause() {
-//        LocalBroadcastManager.getInstance(this).unregisterReceiver(myReceiver!!)
-//        super.onPause()
-//    }
 
     override fun onStop() {
         if (mBound) {

@@ -16,26 +16,34 @@
             android:id="@+id/inLink"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_margin="4dp"
             android:layout_weight="1"
             android:background="@drawable/primary_input_bg"
             android:hint="Link"
+            android:layout_margin="6dp"
             android:paddingHorizontal="8dp" />
 
         <Button
             android:id="@+id/btSend"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_marginHorizontal="4dp"
             android:text="SEND" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/frame"
+
+    <WebView
+        android:id="@+id/webView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:gravity="center"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/layoutTime"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="bottom|center_horizontal"
         android:orientation="vertical">
 
         <TextView
@@ -45,7 +53,7 @@
             android:fontFamily="@font/digital_counter_7"
             android:text="23-03-2021"
             android:textColor="#F50057"
-            android:textSize="40sp" />
+            android:textSize="30sp" />
 
         <Space
             android:layout_width="0dp"
@@ -58,13 +66,15 @@
             android:fontFamily="@font/digital_counter_7"
             android:text="8:25"
             android:textColor="#00E676"
-            android:textSize="100sp" />
+            android:textSize="60sp" />
     </LinearLayout>
 
-    <WebView
-        android:id="@+id/webView"
-        android:layout_width="match_parent"
-        android:layout_height="100dp"
-        android:layout_weight="1" />
+    <com.google.android.gms.ads.AdView xmlns:ads="http://schemas.android.com/apk/res-auto"
+        android:id="@+id/adView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        ads:adSize="BANNER"
+        ads:adUnitId="ca-app-pub-3940256099942544/6300978111"/>
 
 </LinearLayout>
