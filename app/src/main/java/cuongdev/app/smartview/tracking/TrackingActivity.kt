@@ -21,6 +21,7 @@ import android.util.Log
 import android.view.View
 import android.webkit.*
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
@@ -98,7 +99,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             logDebug("TEST", msg = it.adapterStatusMap.toString())
         }
         val adRequest = AdRequest.Builder().build()
-//        adView.loadAd(adRequest)
+        adView.loadAd(adRequest)
 
         initInputs()
         initDateTimeView()
@@ -186,12 +187,42 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         webView.settings.setGeolocationEnabled(true)
     }
 
+    private fun showAlertTracking(mode: String, content: String) {
+        AlertDialog.Builder(this).apply {
+            setTitle("Chế độ $mode")
+            setMessage(content)
+            setNegativeButton("Đồng ý") { dialog, which ->
+                startTracking()
+                Toast.makeText(this@TrackingActivity, "Chế độ $mode: Bật", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            setPositiveButton("Hủy") { dialog, which ->
+                dialog.dismiss()
+            }
+        }.show()
+    }
+
     inner class JavaScriptInterface {
         @JavascriptInterface
         fun tracking(options: String) {
             MyApp.trackingOpt = Gson().fromJson(options, TrackingOption::class.java)
             Log.d("TEST", MyApp.trackingOpt.toString())
-            startTracking()
+
+            when (MyApp.trackingOpt?.mode) {
+                "FULL" -> {
+                    val content = "Chế độ FULL: truy cập vị trí của bạn mỗi 10 giây"
+                    showAlertTracking("FULL", content)
+                }
+                "HALF" -> {
+                    val content = "Chế độ HALF: truy cập vị trí của bạn mỗi 10 giây và vị trí cũ cách vị trí mới một khoảng cho trước."
+                    showAlertTracking("HALF", content)
+                }
+                "AROUND" -> {
+                    val content = "Chế độ AROUND: truy cập vị trí của bạn mỗi 10 giây và cách vị trí đánh dấu một khoảng cho trước."
+                    showAlertTracking("AROUND", content)
+                }
+            }
+
         }
 
         @JavascriptInterface
@@ -218,37 +249,22 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         @SuppressLint("MissingPermission")
         @JavascriptInterface
         fun getGPS() {
-//            var loc: Location? = null
-//            try {
-//                locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-//                val gpsLoc = locationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-//                val netLoc =
-//                    locationManager!!.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-//                if (gpsLoc != null) {
-//                    loc = gpsLoc
-//                } else if (netLoc != null) {
-//                    loc = netLoc
-//                }
-//                logDebug("TEST", msg = loc.toString())
-//                GlobalScope.launch(Dispatchers.Main) {
-//                    webView.evaluateJavascript("javascript:setGPS(\"${loc?.latitude},${loc?.longitude}\")") {
-//                        logDebug(msg = "set GPS $loc")
-//                    }
-//                }
-//
-//            } catch (e: Exception) {
-//                e.printStackTrace()
-//            }
+            if (!Utils.isGPSEnabled(this@TrackingActivity)) {
+                Utils.showSettingGPS(this@TrackingActivity)
+                return
+            }
 
-
-            locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            locationManager?.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                0,
-                0f,
-                this@TrackingActivity
-            )
-
+            if (Utils.canAccessGPS(this@TrackingActivity)) {
+                locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                locationManager?.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    0,
+                    0f,
+                    this@TrackingActivity
+                )
+            } else {
+                Utils.requestGPSPermissions(this@TrackingActivity)
+            }
         }
     }
     //endregion
