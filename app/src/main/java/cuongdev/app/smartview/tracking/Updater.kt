@@ -1,6 +1,7 @@
 package cuongdev.app.smartview.tracking
 
 import android.util.Log
+import cuongdev.app.smartview.HttpPost
 import cuongdev.app.smartview.MyApp
 import cuongdev.app.smartview.ext.logDebug
 import cuongdev.app.smartview.ext.logError
@@ -38,6 +39,8 @@ class Updater {
     private lateinit var option: TrackingOption
     private var allowDist: Double = 0.05
 
+    private var isPushedStartLoc = false
+
     companion object {
         private lateinit var tickerChannel: ReceiveChannel<Unit>
         private var preLat: Double = 0.0
@@ -53,7 +56,6 @@ class Updater {
             this.option = MyApp.trackingOpt!!
             this.reqUrl = MyApp.trackingOpt?.url ?: ""
             this.allowDist = MyApp.trackingOpt?.distanceAllow ?: 0.01
-            this.compareLoc = MyApp.trackingOpt?.location ?: ""
             this.originLoc = MyApp.trackingOpt?.origin ?: ""
             val uploadInterval = MyApp.trackingOpt?.uploadInterval ?: 5 * 60 * 1000
             startTicker(uploadInterval)
@@ -62,12 +64,36 @@ class Updater {
 
     fun onLocationChanged(lat: Double, lng: Double) {
         if (option.on != 1) return
+        pushStartLoc(lat, lng)
         logDebug(msg = "on Location changed | ticker ${tickerChannel.isClosedForReceive}")
         option.mode.let {
             when (it) {
                 "FULL" -> fullTracking(lat, lng)
                 "HALF" -> halfTracking(lat, lng)
                 "AROUND" -> aroundTracking(lat, lng)
+            }
+        }
+    }
+
+    private fun pushStartLoc(lat: Double, lng: Double){
+        if(!isPushedStartLoc){
+            GlobalScope.launch(Dispatchers.IO) {
+                listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+                val params = urlEncodeString("user", option.user) +
+                        "&" + urlEncodeString("list", listLoc) +
+                        "&" + urlEncodeString("gps", "$lat,$lng")
+                "&" + urlEncodeString("extra", option.extra)
+
+                val result = post(reqUrl, params)
+
+                if (result != "1") {
+                    logError(msg = "Post first data failed")
+                } else {
+                    logDebug(msg = "Post fist data successful: params -> $params")
+                    listLoc = ""
+                }
+
+                isPushedStartLoc = false
             }
         }
     }
@@ -118,8 +144,8 @@ class Updater {
                 } else {
                     val params = urlEncodeString("user", option.user) +
                             "&" + urlEncodeString("list", listLoc) +
-                            "&" + urlEncodeString("location", compareLoc) +
                             "&" + urlEncodeString("gps", "$preLat,$preLng")
+                            "&" + urlEncodeString("extra", option.extra)
 
                     val result = post(reqUrl, params)
 
@@ -153,6 +179,7 @@ class Updater {
     }
 
     private fun post(urlStr: String, params: String): String {
+
         val response: String
 
         var conn: HttpURLConnection? = null
@@ -168,6 +195,7 @@ class Updater {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             conn.setRequestProperty("charset", "utf-8")
+            conn.setRequestProperty("X-CSRF-TOKEN", option.token)
             conn.setRequestProperty("Content-Length", params.toByteArray().size.toString())
 
             dos = DataOutputStream(conn.outputStream)
@@ -177,7 +205,12 @@ class Updater {
             inputStream = conn.inputStream;
             val s = Scanner(inputStream).useDelimiter("\\A")
             response = if (s.hasNext()) s.next() else "0"
-        } finally {
+        }
+        catch (e: Exception){
+            Log.e("TEST", e.message ?: "empty")
+            return "-1"
+        }
+        finally {
             dos?.close()
             inputStream?.close()
             conn?.disconnect()

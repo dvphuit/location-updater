@@ -15,9 +15,12 @@ data class TrackingOption(
     val origin: String? = null,
     val uploadInterval: Long? = null,
     val user: String? = null,
-    val location: String? = null
+    val extra: String? = null,
+    val token: String?
 ) {
+
     override fun toString(): String {
         return Gson().toJson(this)
     }
+
 }

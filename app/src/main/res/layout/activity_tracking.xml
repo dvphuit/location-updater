@@ -16,10 +16,10 @@
             android:id="@+id/inLink"
             android:layout_width="0dp"
             android:layout_height="match_parent"
+            android:layout_margin="6dp"
             android:layout_weight="1"
             android:background="@drawable/primary_input_bg"
             android:hint="Link"
-            android:layout_margin="6dp"
             android:paddingHorizontal="8dp" />
 
         <Button
@@ -69,12 +69,25 @@
             android:textSize="60sp" />
     </LinearLayout>
 
-    <com.google.android.gms.ads.AdView xmlns:ads="http://schemas.android.com/apk/res-auto"
-        android:id="@+id/adView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        ads:adSize="BANNER"
-        ads:adUnitId="ca-app-pub-3940256099942544/6300978111"/>
+    <LinearLayout
+        android:id="@+id/ads_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.google.android.gms.ads.AdView xmlns:ads="http://schemas.android.com/apk/res-auto"
+            android:id="@+id/adView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            ads:adSize="BANNER"
+            ads:adUnitId="ca-app-pub-8402945419188656/7743980611" />
+
+        <Button
+            android:id="@+id/btReqAds"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:text="Tai Ads" />
+    </LinearLayout>
 
 </LinearLayout>

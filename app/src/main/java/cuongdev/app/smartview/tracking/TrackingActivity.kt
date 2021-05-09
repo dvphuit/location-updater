@@ -28,6 +28,7 @@ import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
 import com.google.android.material.snackbar.Snackbar
 import com.google.gson.Gson
 import cuongdev.app.smartview.MyApp
@@ -83,6 +84,13 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             val binder = service as LocalBinder
             mService = binder.service
             mBound = true
+//            GlobalScope.launch(Dispatchers.Main) {
+//                val opts = Gson().toJson(MyApp.trackingOpt)
+//                webView.evaluateJavascript("javascript:setTrackingStatus(\"tracking is running\")") { }
+//            }
+            Log.d("TEST", "service is running 1")
+
+
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -98,8 +106,17 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         MobileAds.initialize(this) {
             logDebug("TEST", msg = it.adapterStatusMap.toString())
         }
-        val adRequest = AdRequest.Builder().build()
+        val configAds = RequestConfiguration.Builder()
+            .setTestDeviceIds(listOf("A88D28EE30CC552956DE3823E8E02CDB")).build()
+        MobileAds.setRequestConfiguration(configAds)
+        val adRequest = AdRequest.Builder()
+            .build()
         adView.loadAd(adRequest)
+
+        btReqAds.setOnClickListener {
+            val adRequest = AdRequest.Builder().build()
+            adView.loadAd(adRequest)
+        }
 
         initInputs()
         initDateTimeView()
@@ -114,7 +131,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             pref.edit {
                 putString(WEB_URL, url).apply()
             }
-            webView.loadUrl("https://$url")
+            webView.loadUrl("http://$url")
         }
         inLink.setText(pref.getString(WEB_URL, ""))
     }
@@ -144,7 +161,10 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
     //region setup webview
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
-        webView.settings.javaScriptEnabled = true
+        webView.settings.apply {
+            javaScriptEnabled = true
+            userAgentString = "Android-SmartView"
+        }
         webView.addJavascriptInterface(JavaScriptInterface(), "JSInterface")
         webView.webChromeClient = object : WebChromeClient() {
             override fun onGeolocationPermissionsShowPrompt(
@@ -193,7 +213,8 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             setMessage(content)
             setNegativeButton("Đồng ý") { dialog, which ->
                 startTracking()
-                Toast.makeText(this@TrackingActivity, "Chế độ $mode: Bật", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@TrackingActivity, "Chế độ $mode: Bật", Toast.LENGTH_SHORT)
+                    .show()
                 dialog.dismiss()
             }
             setPositiveButton("Hủy") { dialog, which ->
@@ -207,18 +228,19 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         fun tracking(options: String) {
             MyApp.trackingOpt = Gson().fromJson(options, TrackingOption::class.java)
             Log.d("TEST", MyApp.trackingOpt.toString())
-
             when (MyApp.trackingOpt?.mode) {
                 "FULL" -> {
                     val content = "Chế độ FULL: truy cập vị trí của bạn mỗi 10 giây"
                     showAlertTracking("FULL", content)
                 }
                 "HALF" -> {
-                    val content = "Chế độ HALF: truy cập vị trí của bạn mỗi 10 giây và vị trí cũ cách vị trí mới một khoảng cho trước."
+                    val content =
+                        "Chế độ HALF: truy cập vị trí của bạn mỗi 10 giây và vị trí cũ cách vị trí mới một khoảng cho trước."
                     showAlertTracking("HALF", content)
                 }
                 "AROUND" -> {
-                    val content = "Chế độ AROUND: truy cập vị trí của bạn mỗi 10 giây và cách vị trí đánh dấu một khoảng cho trước."
+                    val content =
+                        "Chế độ AROUND: truy cập vị trí của bạn mỗi 10 giây và cách vị trí đánh dấu một khoảng cho trước."
                     showAlertTracking("AROUND", content)
                 }
             }
@@ -266,6 +288,14 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
                 Utils.requestGPSPermissions(this@TrackingActivity)
             }
         }
+
+        @JavascriptInterface
+        fun getTrackingStatus() {
+            GlobalScope.launch(Dispatchers.Main) {
+                webView.evaluateJavascript("javascript:setTrackingStatus(${MyApp.trackingOpt.toString()})") { }
+            }
+        }
+
     }
     //endregion
 
@@ -277,6 +307,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
 
         if (Utils.canAccessGPS(this)) {
             mService!!.requestLocationUpdates()
+
         } else {
             Utils.requestGPSPermissions(this)
         }
