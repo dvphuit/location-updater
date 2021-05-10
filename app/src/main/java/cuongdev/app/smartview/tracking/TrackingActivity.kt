@@ -40,6 +40,7 @@ import cuongdev.app.smartview.printer.models.PrintAlignment
 import cuongdev.app.smartview.printer.models.PrintFont
 import cuongdev.app.smartview.printer.models.ThermalPrinter
 import cuongdev.app.smartview.tracking.LocationService.LocalBinder
+import kotlinx.android.synthetic.main.activity_guildline.*
 import kotlinx.android.synthetic.main.activity_tracking.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -84,13 +85,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             val binder = service as LocalBinder
             mService = binder.service
             mBound = true
-//            GlobalScope.launch(Dispatchers.Main) {
-//                val opts = Gson().toJson(MyApp.trackingOpt)
-//                webView.evaluateJavascript("javascript:setTrackingStatus(\"tracking is running\")") { }
-//            }
             Log.d("TEST", "service is running 1")
-
-
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -405,11 +400,11 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
                     mService!!.requestLocationUpdates()
                 } else {
                     Snackbar.make(
-                        activity_tracking,
-                        R.string.permission_denied_explanation,
+                        activity_intro,
+                        "Bạn cần cấp quyền truy cập vị trí để có thể truy cập được ứng dụng!",
                         Snackbar.LENGTH_INDEFINITE
                     )
-                        .setAction(R.string.settings) { // Build intent that displays the App settings screen.
+                        .setAction("Cấp quyền") {
                             Utils.requestGPSPermissions(this)
                         }
                         .show()

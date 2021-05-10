@@ -86,32 +86,11 @@ internal object Utils {
     }
 
     fun requestGPSPermissions(activity: Activity) {
-        val shouldProvideRationale =
-            ActivityCompat.shouldShowRequestPermissionRationale(
-                activity,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
-
-        if (shouldProvideRationale) {
-            Snackbar.make(
-                activity.findViewById(R.id.activity_tracking),
-                R.string.permission_rationale,
-                Snackbar.LENGTH_INDEFINITE
-            ).setAction(R.string.ok) { // Request permission
-                ActivityCompat.requestPermissions(
-                    activity,
-                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                    GPS_REQUEST_CODE
-                )
-            }.show()
-
-        } else {
-            ActivityCompat.requestPermissions(
-                activity,
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                GPS_REQUEST_CODE
-            )
-        }
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+            GPS_REQUEST_CODE
+        )
     }
 
     fun canAccessCamera(context: Context): Boolean {
