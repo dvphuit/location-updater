@@ -1,11 +1,13 @@
 package cuongdev.app.smartview.tracking
 
 import android.util.Log
-import cuongdev.app.smartview.HttpPost
+import com.google.gson.Gson
 import cuongdev.app.smartview.MyApp
 import cuongdev.app.smartview.ext.logDebug
 import cuongdev.app.smartview.ext.logError
+import cuongdev.app.smartview.model.BaseResponse
 import cuongdev.app.smartview.model.TrackingOption
+import cuongdev.app.smartview.model.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -75,25 +77,26 @@ class Updater {
         }
     }
 
-    private fun pushStartLoc(lat: Double, lng: Double){
-        if(!isPushedStartLoc){
+    private fun pushStartLoc(lat: Double, lng: Double) {
+        if (!isPushedStartLoc) {
             GlobalScope.launch(Dispatchers.IO) {
-                listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+                listLoc += "1;$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
                 val params = urlEncodeString("user", option.user) +
                         "&" + urlEncodeString("list", listLoc) +
-                        "&" + urlEncodeString("gps", "$lat,$lng")
-                "&" + urlEncodeString("extra", option.extra)
+                        "&" + urlEncodeString("gps", "$lat,$lng") +
+                        "&" + urlEncodeString("extra", option.extra) +
+                        "&" + urlEncodeString("shift", option.shift) +
+                        "&" + urlEncodeString("token", option.token)
 
                 val result = post(reqUrl, params)
 
-                if (result != "1") {
+                if (result.contains("result:1")) {
                     logError(msg = "Post first data failed")
                 } else {
                     logDebug(msg = "Post fist data successful: params -> $params")
+                    isPushedStartLoc = true
                     listLoc = ""
                 }
-
-                isPushedStartLoc = false
             }
         }
     }
@@ -102,7 +105,7 @@ class Updater {
         logDebug(msg = "Mode -> FULL")
         preLat = lat
         preLng = lng
-        listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+        listLoc += "1;$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
     }
 
     private fun halfTracking(lat: Double, lng: Double) {
@@ -110,7 +113,7 @@ class Updater {
         val distance = calculateDistance(preLat, preLng, lat, lng)
         logDebug(msg = "Mode -> HALF ---- dist: $distance | allowDist: $allowDistance")
         if (distance >= allowDistance) {
-            listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+            listLoc += "1;$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
             preLat = lat
             preLng = lng
             logDebug(msg = "Store list location: $listLoc")
@@ -123,9 +126,9 @@ class Updater {
         val originLoc = (option.origin ?: "0,0").split(",").map { it.toDouble() }
         val allowDistance = allowDist
         val distance = calculateDistance(originLoc[0], originLoc[1], lat, lng)
-
+        Log.d("TEST", "AROUND mode distance -> $distance")
         if (distance >= allowDistance) {
-            listLoc += "$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
+            listLoc += "1;$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
             preLat = lat
             preLng = lng
             logDebug(msg = "Store list location: $listLoc")
@@ -144,16 +147,21 @@ class Updater {
                 } else {
                     val params = urlEncodeString("user", option.user) +
                             "&" + urlEncodeString("list", listLoc) +
-                            "&" + urlEncodeString("gps", "$preLat,$preLng")
-                            "&" + urlEncodeString("extra", option.extra)
+                            "&" + urlEncodeString("gps", "$preLat,$preLng") +
+                            "&" + urlEncodeString("extra", option.extra) +
+                            "&" + urlEncodeString("shift", option.shift) +
+                            "&" + urlEncodeString("token", option.token)
 
-                    val result = post(reqUrl, params)
+                    val response = Gson().fromJson<BaseResponse>(
+                        post(reqUrl, params),
+                        BaseResponse::class.java
+                    )
 
-                    if (result != "1") {
-                        logError(msg = "post data failed")
-                    } else {
+                    if (response.isSuccess()) {
                         logDebug(msg = "Post data successful: params -> $params")
                         listLoc = ""
+                    } else {
+                        logError(msg = "post data failed")
                     }
                 }
             }
@@ -205,12 +213,10 @@ class Updater {
             inputStream = conn.inputStream;
             val s = Scanner(inputStream).useDelimiter("\\A")
             response = if (s.hasNext()) s.next() else "0"
-        }
-        catch (e: Exception){
+        } catch (e: Exception) {
             Log.e("TEST", e.message ?: "empty")
             return "-1"
-        }
-        finally {
+        } finally {
             dos?.close()
             inputStream?.close()
             conn?.disconnect()

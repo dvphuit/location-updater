@@ -54,14 +54,14 @@ class SplashActivity : AppCompatActivity() {
         val isReadGuide = pref.getBoolean(IS_READ_GUIDE, false)
         val isAcceptedPolicy = pref.getBoolean(IS_ACCEPTED_POLICY, false)
 
-        if(!isAcceptedPolicy){
-            startActivity(Intent(this, PolicyActivity::class.java))
+        if(!isReadGuide){
+            startActivity(Intent(this, GuidelineActivity::class.java))
             finish()
             return
         }
 
-        if(isAcceptedPolicy && !isReadGuide){
-            startActivity(Intent(this, GuidelineActivity::class.java))
+        if(!isAcceptedPolicy && isReadGuide){
+            startActivity(Intent(this, PolicyActivity::class.java))
             finish()
             return
         }

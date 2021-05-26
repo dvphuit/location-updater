@@ -8,6 +8,7 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
+import cuongdev.app.smartview.tracking.TrackingActivity
 import kotlinx.android.synthetic.main.activity_policy.*
 
 const val IS_ACCEPTED_POLICY = "IS_ACCEPTED_POLICY"
@@ -38,22 +39,22 @@ class PolicyActivity : AppCompatActivity() {
         btDeny.setOnClickListener { finish() }
 
         btAccept.setOnClickListener {
-            gotoGuide()
+            gotoMain()
             pref.edit {
                 putBoolean(IS_ACCEPTED_POLICY, true).apply()
             }
         }
     }
 
-    private fun gotoGuide() {
-        startActivity(Intent(this, GuidelineActivity::class.java))
+    private fun gotoMain() {
+        startActivity(Intent(this, TrackingActivity::class.java))
         finish()
     }
 
     private fun checkState() {
         val isAccepted = pref.getBoolean(IS_ACCEPTED_POLICY, false)
         if (isAccepted) {
-            gotoGuide()
+            gotoMain()
         }
     }
 }

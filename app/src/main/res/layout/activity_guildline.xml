@@ -40,8 +40,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginVertical="8dp"
+        style="@style/buttonStyle"
         android:background="@android:color/transparent"
-        android:textColor="@color/buttonColor"
         android:text="Tiếp tục"
         android:textStyle="bold" />
 </LinearLayout>

@@ -16,6 +16,7 @@ data class TrackingOption(
     val uploadInterval: Long? = null,
     val user: String? = null,
     val extra: String? = null,
+    val shift: String? = null,
     val token: String?
 ) {
 

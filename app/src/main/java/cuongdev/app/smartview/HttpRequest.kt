@@ -80,6 +80,10 @@ class HttpPost private constructor(
         }.close()
     }
 
+    private fun buildBody(){
+
+    }
+
     fun stringResponse(): String? {
         buildHeaders()
         buildParts()

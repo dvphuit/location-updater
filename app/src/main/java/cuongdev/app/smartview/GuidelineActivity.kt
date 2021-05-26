@@ -15,7 +15,6 @@ import cuongdev.app.smartview.tracking.TrackingActivity
 import cuongdev.app.smartview.tracking.Utils
 import kotlinx.android.synthetic.main.activity_guildline.*
 
-
 const val IS_READ_GUIDE = "IS_READ_GUIDE"
 
 class GuidelineActivity : AppCompatActivity() {
@@ -65,7 +64,7 @@ class GuidelineActivity : AppCompatActivity() {
     }
 
     private fun gotoMain() {
-        startActivity(Intent(this, TrackingActivity::class.java))
+        startActivity(Intent(this, PolicyActivity::class.java))
         finish()
     }
 
@@ -74,9 +73,11 @@ class GuidelineActivity : AppCompatActivity() {
             btPermission.isEnabled = false
             btNext.isEnabled = true
             slideIndex = 2
+            btPermission.isEnabled = false
         } else {
             btNext.isEnabled = false
             btPermission.isEnabled = true
+            slideIndex++
         }
     }
 
@@ -88,8 +89,7 @@ class GuidelineActivity : AppCompatActivity() {
         when (requestCode) {
             Utils.GPS_REQUEST_CODE -> {
                 if (Utils.canAccessGPS(this)) {
-                    slideIndex++
-                    updateSlide()
+                    checkPermission()
                 } else {
                     if (shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)) {
                         Snackbar.make(

@@ -6,6 +6,7 @@ import android.content.*
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.location.Criteria
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -45,7 +46,6 @@ import kotlinx.android.synthetic.main.activity_tracking.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.ticker
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.io.File
@@ -71,6 +71,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
     override fun onLocationChanged(loc: Location) {
         logDebug("TEST", msg = loc.toString())
         GlobalScope.launch(Dispatchers.Main) {
+            logDebug("TEST", msg = "javascript:setGPS ${loc.toString()}")
             webView.evaluateJavascript("javascript:setGPS(\"${loc.latitude},${loc.longitude}\")") { }
         }
         locationManager?.removeUpdates(this)
@@ -101,17 +102,15 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         MobileAds.initialize(this) {
             logDebug("TEST", msg = it.adapterStatusMap.toString())
         }
-        val configAds = RequestConfiguration.Builder()
-            .setTestDeviceIds(listOf("A88D28EE30CC552956DE3823E8E02CDB")).build()
-        MobileAds.setRequestConfiguration(configAds)
-        val adRequest = AdRequest.Builder()
-            .build()
-        adView.loadAd(adRequest)
+//        val configAds = RequestConfiguration.Builder()
+//            .setTestDeviceIds(listOf("A88D28EE30CC552956DE3823E8E02CDB")).build()
+//        MobileAds.setRequestConfiguration(configAds)
 
-        btReqAds.setOnClickListener {
-            val adRequest = AdRequest.Builder().build()
-            adView.loadAd(adRequest)
-        }
+        adView.loadAd(AdRequest.Builder().build())
+//        btReqAds.setOnClickListener {
+//            val adRequest = AdRequest.Builder().build()
+//            adView.loadAd(adRequest)
+//        }
 
         initInputs()
         initDateTimeView()
@@ -126,30 +125,31 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             pref.edit {
                 putString(WEB_URL, url).apply()
             }
-            webView.loadUrl("http://$url")
+            webView.loadUrl("https://${url.replace("@", ".")}")
+//            webView.loadUrl("http://192.168.1.24/core-v2/public/")
         }
         inLink.setText(pref.getString(WEB_URL, ""))
     }
     //endregion
 
     //region clock
-    private val tickerChannel = ticker(delayMillis = 1_000, initialDelayMillis = 0)
+//    private val tickerChannel = ticker(delayMillis = 1_000, initialDelayMillis = 0)
 
     @SuppressLint("SetTextI18n")
     private fun initDateTimeView() {
-        GlobalScope.launch(Dispatchers.Main) {
-            for (event in tickerChannel) {
-                val c = Calendar.getInstance(Locale.getDefault())
-                val day = c[Calendar.DAY_OF_MONTH]
-                val month = c[Calendar.MONTH]
-                val year = c[Calendar.YEAR]
-                val min = c[Calendar.MINUTE]
-                val hour = c[Calendar.HOUR]
-                val sec = c[Calendar.SECOND]
-                tvDate.text = "$day-$month-$year"
-                tvTime.text = "${hour}:$min:$sec"
-            }
-        }
+//        GlobalScope.launch(Dispatchers.Main) {
+//            for (event in tickerChannel) {
+//                val c = Calendar.getInstance(Locale.getDefault())
+//                val day = c[Calendar.DAY_OF_MONTH]
+//                val month = c[Calendar.MONTH]
+//                val year = c[Calendar.YEAR]
+//                val min = c[Calendar.MINUTE]
+//                val hour = c[Calendar.HOUR]
+//                val sec = c[Calendar.SECOND]
+//                tvDate.text = "$day-$month-$year"
+//                tvTime.text = "${hour}:$min:$sec"
+//            }
+//        }
     }
     //endregion
 
@@ -193,9 +193,28 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                Log.e("TEST", "load $url")
                 inputLayout.visibility = View.GONE
-                layoutTime.visibility = View.GONE
+//                layoutTime.visibility = View.GONE
                 webView.visibility = View.VISIBLE
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                Log.d("TEST", "error ${error.toString()}")
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                Log.e("TEST", "http error ${errorResponse.toString()}")
             }
 
         }
@@ -223,22 +242,28 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         fun tracking(options: String) {
             MyApp.trackingOpt = Gson().fromJson(options, TrackingOption::class.java)
             Log.d("TEST", MyApp.trackingOpt.toString())
-            when (MyApp.trackingOpt?.mode) {
-                "FULL" -> {
-                    val content = "Chế độ FULL: truy cập vị trí của bạn mỗi 10 giây"
-                    showAlertTracking("FULL", content)
-                }
-                "HALF" -> {
-                    val content =
-                        "Chế độ HALF: truy cập vị trí của bạn mỗi 10 giây và vị trí cũ cách vị trí mới một khoảng cho trước."
-                    showAlertTracking("HALF", content)
-                }
-                "AROUND" -> {
-                    val content =
-                        "Chế độ AROUND: truy cập vị trí của bạn mỗi 10 giây và cách vị trí đánh dấu một khoảng cho trước."
-                    showAlertTracking("AROUND", content)
-                }
-            }
+            startTracking()
+            Toast.makeText(
+                this@TrackingActivity,
+                "Chế độ ${MyApp.trackingOpt?.mode}: Bật",
+                Toast.LENGTH_SHORT
+            ).show()
+//            when (MyApp.trackingOpt?.mode) {
+//                "FULL" -> {
+//                    val content = "Chế độ FULL: truy cập vị trí của bạn mỗi 10 giây"
+//                    showAlertTracking("FULL", content)
+//                }
+//                "HALF" -> {
+//                    val content =
+//                        "Chế độ HALF: truy cập vị trí của bạn mỗi 10 giây và vị trí cũ cách vị trí mới một khoảng cho trước."
+//                    showAlertTracking("HALF", content)
+//                }
+//                "AROUND" -> {
+//                    val content =
+//                        "Chế độ AROUND: truy cập vị trí của bạn mỗi 10 giây và cách vị trí đánh dấu một khoảng cho trước."
+//                    showAlertTracking("AROUND", content)
+//                }
+//            }
 
         }
 
@@ -272,13 +297,13 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             }
 
             if (Utils.canAccessGPS(this@TrackingActivity)) {
-                locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                locationManager?.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    0,
-                    0f,
-                    this@TrackingActivity
-                )
+                val loc = getLocation()
+                val latitude = loc?.latitude ?: -1
+                val longitude = loc?.longitude ?: -1
+                Log.d("TEST", "set gps ${latitude} - ${longitude}")
+                GlobalScope.launch(Dispatchers.Main) {
+                    webView.evaluateJavascript("javascript:setGPS(\"${latitude},${longitude}\")") { }
+                }
             } else {
                 Utils.requestGPSPermissions(this@TrackingActivity)
             }
@@ -293,6 +318,44 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
 
     }
     //endregion
+
+//    @SuppressLint("MissingPermission")
+//    private fun getLocation(): Location? {
+//        val lm = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+//        val gps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+//        val net = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+//
+//        return gps ?: net
+//    }
+
+    @SuppressLint("MissingPermission")
+    private fun getLocation(): Location? {
+        val locationManager =
+            getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val criteria = Criteria()
+        val bestProvider = locationManager.getBestProvider(criteria, false)
+        var location = locationManager.getLastKnownLocation(bestProvider!!)
+        val listener: LocationListener =
+            object : LocationListener {
+                override fun onLocationChanged(l: Location) {}
+                override fun onProviderEnabled(p: String) {}
+                override fun onProviderDisabled(p: String) {}
+                override fun onStatusChanged(
+                    p: String,
+                    status: Int,
+                    extras: Bundle
+                ) {
+                }
+            }
+        locationManager.requestLocationUpdates(bestProvider, 0, 0f, listener)
+        location = locationManager.getLastKnownLocation(bestProvider)
+        Log.d("TEST", "1 $location")
+        try {
+            return location
+        } catch (e: NullPointerException) {
+            return null
+        }
+    }
 
     private fun startTracking() {
         if (!Utils.isGPSEnabled(this)) {
