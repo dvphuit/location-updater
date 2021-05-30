@@ -15,7 +15,7 @@ import cuongdev.app.smartview.R
 
 class LocationService : Service() {
 
-    companion object{
+    companion object {
         private const val PACKAGE_NAME = "com.google.android.gms.location.app.tracking"
         const val ACTION_BROADCAST = "$PACKAGE_NAME.broadcast"
         const val EXTRA_LOCATION = "$PACKAGE_NAME.location"
@@ -30,7 +30,7 @@ class LocationService : Service() {
         private val TAG = LocationService::class.java.simpleName
     }
 
-    private lateinit var tracker: Updater
+    private var tracker: Updater? = null
 
     private val mBinder: IBinder = LocalBinder()
 
@@ -67,6 +67,7 @@ class LocationService : Service() {
                 NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_DEFAULT)
             mNotificationManager!!.createNotificationChannel(mChannel)
         }
+
     }
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
@@ -115,6 +116,8 @@ class LocationService : Service() {
     }
 
     override fun onDestroy() {
+        Log.d("TEST", "location service is destroyed")
+        tracker?.offline()
         mServiceHandler!!.removeCallbacksAndMessages(null)
     }
 
@@ -122,7 +125,7 @@ class LocationService : Service() {
         Log.i(TAG, "Requesting location updates")
         Utils.setRequestingLocationUpdates(this, true)
         startService(Intent(applicationContext, LocationService::class.java))
-        this.tracker = Updater()
+        this.tracker = Updater().also { it.startTicker() }
         try {
             mFusedLocationClient!!.requestLocationUpdates(
                 mLocationRequest,
@@ -210,7 +213,7 @@ class LocationService : Service() {
     private fun onNewLocation(location: Location) {
         Log.i(TAG, "New location: $location")
         mLocation = location
-        tracker.onLocationChanged(location.latitude, location.longitude)
+        tracker?.onLocationChanged(location.latitude, location.longitude)
         // Notify anyone listening for broadcasts about the new location.
         val intent = Intent(ACTION_BROADCAST)
         intent.putExtra(EXTRA_LOCATION, location)

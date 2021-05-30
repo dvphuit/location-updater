@@ -10,6 +10,7 @@ import cuongdev.app.smartview.model.TrackingOption
 import cuongdev.app.smartview.model.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.ticker
 import kotlinx.coroutines.launch
@@ -43,31 +44,37 @@ class Updater {
 
     private var isPushedStartLoc = false
 
+    private var reqJob: Job? = null
+    private var tickerChannel: ReceiveChannel<Unit>? = null
+
     companion object {
-        private lateinit var tickerChannel: ReceiveChannel<Unit>
         private var preLat: Double = 0.0
         private var preLng: Double = 0.0
         private var listLoc: String = ""
+        private var uploadInterval = Long.MAX_VALUE
     }
 
     init {
         if (MyApp.trackingOpt == null || MyApp.trackingOpt?.on != 1) {
             logError(msg = "Tracking option is null or Off. Can't start tracking service!")
-            tickerChannel.cancel()
+            tickerChannel?.cancel()
         } else {
             this.option = MyApp.trackingOpt!!
             this.reqUrl = MyApp.trackingOpt?.url ?: ""
             this.allowDist = MyApp.trackingOpt?.distanceAllow ?: 0.01
             this.originLoc = MyApp.trackingOpt?.origin ?: ""
-            val uploadInterval = MyApp.trackingOpt?.uploadInterval ?: 5 * 60 * 1000
-            startTicker(uploadInterval)
+            uploadInterval = MyApp.trackingOpt?.uploadInterval ?: 5 * 60 * 1000
         }
+    }
+
+    fun startTicker() {
+        startTicker(uploadInterval)
     }
 
     fun onLocationChanged(lat: Double, lng: Double) {
         if (option.on != 1) return
         pushStartLoc(lat, lng)
-        logDebug(msg = "on Location changed | ticker ${tickerChannel.isClosedForReceive}")
+        logDebug(msg = "on Location changed | ticker ${tickerChannel?.isClosedForReceive}")
         option.mode.let {
             when (it) {
                 "FULL" -> fullTracking(lat, lng)
@@ -79,7 +86,7 @@ class Updater {
 
     private fun pushStartLoc(lat: Double, lng: Double) {
         if (!isPushedStartLoc) {
-            GlobalScope.launch(Dispatchers.IO) {
+            reqJob = GlobalScope.launch(Dispatchers.IO) {
                 listLoc += "1;$lat,$lng;${formatter.format(calendar.timeInMillis)}|"
                 val params = urlEncodeString("user", option.user) +
                         "&" + urlEncodeString("list", listLoc) +
@@ -138,8 +145,8 @@ class Updater {
     private fun startTicker(interval: Long) {
         logDebug("startTicker", msg = "interval $interval")
         tickerChannel = ticker(delayMillis = interval, initialDelayMillis = interval)
-        GlobalScope.launch(Dispatchers.IO) {
-            for (event in tickerChannel) {
+        reqJob = GlobalScope.launch(Dispatchers.IO) {
+            for (event in tickerChannel!!) {
                 logDebug(msg = "===========================================================")
                 logDebug(msg = "Start post data $listLoc")
                 if (listLoc.isEmpty()) {
@@ -164,6 +171,32 @@ class Updater {
                         logError(msg = "post data failed")
                     }
                 }
+            }
+        }
+    }
+
+    fun offline(result: (() -> Unit)? = null) {
+        reqJob = GlobalScope.launch {
+            listLoc = "0;EXIT_APP;${formatter.format(calendar.timeInMillis)}|"
+            val params = urlEncodeString("user", option.user) +
+                    "&" + urlEncodeString("list", listLoc) +
+                    "&" + urlEncodeString("gps", "$preLat,$preLng") +
+                    "&" + urlEncodeString("extra", option.extra) +
+                    "&" + urlEncodeString("shift", option.shift) +
+                    "&" + urlEncodeString("token", option.token)
+
+            val response = Gson().fromJson<BaseResponse>(
+                post(reqUrl, params),
+                BaseResponse::class.java
+            )
+
+            if (response.isSuccess()) {
+                logDebug(msg = "App is offline: params -> $params")
+                result?.invoke()
+                dispose()
+            } else {
+                logError(msg = "post data failed")
+                result?.invoke()
             }
         }
     }
@@ -203,7 +236,6 @@ class Updater {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             conn.setRequestProperty("charset", "utf-8")
-            conn.setRequestProperty("X-CSRF-TOKEN", option.token)
             conn.setRequestProperty("Content-Length", params.toByteArray().size.toString())
 
             dos = DataOutputStream(conn.outputStream)
@@ -228,8 +260,9 @@ class Updater {
         return URLEncoder.encode(param, "UTF8") + "=" + URLEncoder.encode(value, "UTF8")
     }
 
-    fun dispose() {
-        tickerChannel.cancel()
+    private fun dispose() {
+        reqJob?.cancel()
+        tickerChannel?.cancel()
         MyApp.trackingOpt = null
     }
 }

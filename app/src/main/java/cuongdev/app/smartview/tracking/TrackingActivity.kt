@@ -1,8 +1,10 @@
 package cuongdev.app.smartview.tracking
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.*
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -24,12 +26,12 @@ import android.webkit.*
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.RequestConfiguration
 import com.google.android.material.snackbar.Snackbar
 import com.google.gson.Gson
 import cuongdev.app.smartview.MyApp
@@ -45,7 +47,6 @@ import kotlinx.android.synthetic.main.activity_guildline.*
 import kotlinx.android.synthetic.main.activity_tracking.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.channels.ticker
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.io.File
@@ -97,23 +98,13 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_tracking)
+
         MobileAds.initialize(this) {
-            logDebug("TEST", msg = it.adapterStatusMap.toString())
+            adView.loadAd(AdRequest.Builder().build())
         }
-//        val configAds = RequestConfiguration.Builder()
-//            .setTestDeviceIds(listOf("A88D28EE30CC552956DE3823E8E02CDB")).build()
-//        MobileAds.setRequestConfiguration(configAds)
-
-        adView.loadAd(AdRequest.Builder().build())
-//        btReqAds.setOnClickListener {
-//            val adRequest = AdRequest.Builder().build()
-//            adView.loadAd(adRequest)
-//        }
-
+        getLastKnownLocation()
         initInputs()
-        initDateTimeView()
         initWebView()
     }
 
@@ -132,26 +123,6 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
     }
     //endregion
 
-    //region clock
-//    private val tickerChannel = ticker(delayMillis = 1_000, initialDelayMillis = 0)
-
-    @SuppressLint("SetTextI18n")
-    private fun initDateTimeView() {
-//        GlobalScope.launch(Dispatchers.Main) {
-//            for (event in tickerChannel) {
-//                val c = Calendar.getInstance(Locale.getDefault())
-//                val day = c[Calendar.DAY_OF_MONTH]
-//                val month = c[Calendar.MONTH]
-//                val year = c[Calendar.YEAR]
-//                val min = c[Calendar.MINUTE]
-//                val hour = c[Calendar.HOUR]
-//                val sec = c[Calendar.SECOND]
-//                tvDate.text = "$day-$month-$year"
-//                tvTime.text = "${hour}:$min:$sec"
-//            }
-//        }
-    }
-    //endregion
 
     //region setup webview
     @SuppressLint("SetJavaScriptEnabled")
@@ -159,6 +130,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         webView.settings.apply {
             javaScriptEnabled = true
             userAgentString = "Android-SmartView"
+            setGeolocationEnabled(true)
         }
         webView.addJavascriptInterface(JavaScriptInterface(), "JSInterface")
         webView.webChromeClient = object : WebChromeClient() {
@@ -195,7 +167,6 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
                 super.onPageFinished(view, url)
                 Log.e("TEST", "load $url")
                 inputLayout.visibility = View.GONE
-//                layoutTime.visibility = View.GONE
                 webView.visibility = View.VISIBLE
             }
 
@@ -218,7 +189,6 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             }
 
         }
-        webView.settings.setGeolocationEnabled(true)
     }
 
     private fun showAlertTracking(mode: String, content: String) {
@@ -248,23 +218,6 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
                 "Chế độ ${MyApp.trackingOpt?.mode}: Bật",
                 Toast.LENGTH_SHORT
             ).show()
-//            when (MyApp.trackingOpt?.mode) {
-//                "FULL" -> {
-//                    val content = "Chế độ FULL: truy cập vị trí của bạn mỗi 10 giây"
-//                    showAlertTracking("FULL", content)
-//                }
-//                "HALF" -> {
-//                    val content =
-//                        "Chế độ HALF: truy cập vị trí của bạn mỗi 10 giây và vị trí cũ cách vị trí mới một khoảng cho trước."
-//                    showAlertTracking("HALF", content)
-//                }
-//                "AROUND" -> {
-//                    val content =
-//                        "Chế độ AROUND: truy cập vị trí của bạn mỗi 10 giây và cách vị trí đánh dấu một khoảng cho trước."
-//                    showAlertTracking("AROUND", content)
-//                }
-//            }
-
         }
 
         @JavascriptInterface
@@ -297,7 +250,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             }
 
             if (Utils.canAccessGPS(this@TrackingActivity)) {
-                val loc = getLocation()
+                val loc = getLastKnownLocation()
                 val latitude = loc?.latitude ?: -1
                 val longitude = loc?.longitude ?: -1
                 Log.d("TEST", "set gps ${latitude} - ${longitude}")
@@ -312,49 +265,34 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         @JavascriptInterface
         fun getTrackingStatus() {
             GlobalScope.launch(Dispatchers.Main) {
-                webView.evaluateJavascript("javascript:setTrackingStatus(${MyApp.trackingOpt.toString()})") { }
+                val isGPSEnabled = Utils.isGPSEnabled(this@TrackingActivity)
+                val isServiceRunning = mBound
+                val params = "${MyApp.trackingOpt.toString().dropLast(1)},\"isGPSEnabled\":$isGPSEnabled,\"isServiceRunning\":$isServiceRunning}"
+                Log.d("TEST", "setTrackingStatus $params")
+                webView.evaluateJavascript("javascript:setTrackingStatus($params)") { }
             }
         }
 
     }
     //endregion
 
-//    @SuppressLint("MissingPermission")
-//    private fun getLocation(): Location? {
-//        val lm = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-//        val gps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-//        val net = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-//
-//        return gps ?: net
-//    }
-
-    @SuppressLint("MissingPermission")
-    private fun getLocation(): Location? {
-        val locationManager =
-            getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val criteria = Criteria()
-        val bestProvider = locationManager.getBestProvider(criteria, false)
-        var location = locationManager.getLastKnownLocation(bestProvider!!)
-        val listener: LocationListener =
-            object : LocationListener {
-                override fun onLocationChanged(l: Location) {}
-                override fun onProviderEnabled(p: String) {}
-                override fun onProviderDisabled(p: String) {}
-                override fun onStatusChanged(
-                    p: String,
-                    status: Int,
-                    extras: Bundle
-                ) {
-                }
-            }
-        locationManager.requestLocationUpdates(bestProvider, 0, 0f, listener)
-        location = locationManager.getLastKnownLocation(bestProvider)
-        Log.d("TEST", "1 $location")
-        try {
-            return location
-        } catch (e: NullPointerException) {
+    //    @SuppressLint("MissingPermission")
+    private fun getLastKnownLocation(): Location? {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION ) != PackageManager.PERMISSION_GRANTED
+            && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             return null
         }
+
+        val mLocationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val providers: List<String> = mLocationManager.getProviders(true)
+        var bestLocation: Location? = null
+        for (provider in providers) {
+            val l: Location =  mLocationManager.getLastKnownLocation(provider) ?: continue
+            if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
+                bestLocation = l
+            }
+        }
+        return bestLocation
     }
 
     private fun startTracking() {
@@ -365,7 +303,6 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
 
         if (Utils.canAccessGPS(this)) {
             mService!!.requestLocationUpdates()
-
         } else {
             Utils.requestGPSPermissions(this)
         }

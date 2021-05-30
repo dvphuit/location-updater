@@ -35,6 +35,10 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".tracking.MakeOfflineService"
+            android:stopWithTask="false"/>
+
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="true" />
