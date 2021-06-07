@@ -261,8 +261,33 @@ class Updater {
     }
 
     private fun dispose() {
+        Log.d("TEST", "updater is disposed")
         reqJob?.cancel()
         tickerChannel?.cancel()
         MyApp.trackingOpt = null
+    }
+
+    fun checkout(){
+        reqJob = GlobalScope.launch {
+            val params = urlEncodeString("user", option.user) +
+                    "&" + urlEncodeString("list", listLoc) +
+                    "&" + urlEncodeString("gps", "$preLat,$preLng") +
+                    "&" + urlEncodeString("extra", option.extra) +
+                    "&" + urlEncodeString("shift", option.shift) +
+                    "&" + urlEncodeString("token", option.token)
+
+            val response = Gson().fromJson(
+                post(reqUrl, params),
+                BaseResponse::class.java
+            )
+
+            if (response.isSuccess()) {
+                logDebug(msg = "TEST: Checked out --> params --> $params")
+                dispose()
+            } else {
+                logError(msg = "post data failed")
+            }
+        }
+        dispose()
     }
 }

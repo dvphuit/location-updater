@@ -95,12 +95,31 @@
             ads:adSize="BANNER"
             ads:adUnitId="ca-app-pub-8402945419188656/7743980611" />
 
-<!--        <Button-->
-<!--            android:id="@+id/btReqAds"-->
-<!--            android:layout_width="wrap_content"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:layout_gravity="center_vertical"-->
-<!--            android:text="Tai Ads" />-->
+        <!--        <Button-->
+        <!--            android:id="@+id/btReqAds"-->
+        <!--            android:layout_width="wrap_content"-->
+        <!--            android:layout_height="wrap_content"-->
+        <!--            android:layout_gravity="center_vertical"-->
+        <!--            android:text="Tai Ads" />-->
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/progress_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0.4"
+        android:animateLayoutChanges="true"
+        android:background="@android:color/black"
+        android:clickable="true"
+        android:visibility="gone">
+
+        <ProgressBar
+            style="?android:attr/progressBarStyleLarge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminate="true" />
+
+    </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

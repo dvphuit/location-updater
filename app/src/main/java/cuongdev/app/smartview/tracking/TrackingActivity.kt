@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
+import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
 import android.text.format.DateFormat
@@ -32,6 +33,7 @@ import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
 import com.google.gson.Gson
 import cuongdev.app.smartview.MyApp
@@ -111,6 +113,8 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
     //region input
     private fun initInputs() {
         btSend.setOnClickListener {
+            progress_overlay.visibility = View.VISIBLE
+
             val url = inLink.text.trim().toString()
             Utils.hideKeyboard(this@TrackingActivity)
             pref.edit {
@@ -165,9 +169,10 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                Log.e("TEST", "load $url")
+                Log.e("TEST", "onPageFinished: $url")
                 inputLayout.visibility = View.GONE
                 webView.visibility = View.VISIBLE
+                progress_overlay.visibility = View.GONE
             }
 
             override fun onReceivedError(
@@ -191,33 +196,25 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    private fun showAlertTracking(mode: String, content: String) {
-        AlertDialog.Builder(this).apply {
-            setTitle("Chế độ $mode")
-            setMessage(content)
-            setNegativeButton("Đồng ý") { dialog, which ->
-                startTracking()
-                Toast.makeText(this@TrackingActivity, "Chế độ $mode: Bật", Toast.LENGTH_SHORT)
-                    .show()
-                dialog.dismiss()
-            }
-            setPositiveButton("Hủy") { dialog, which ->
-                dialog.dismiss()
-            }
-        }.show()
-    }
-
     inner class JavaScriptInterface {
         @JavascriptInterface
         fun tracking(options: String) {
             MyApp.trackingOpt = Gson().fromJson(options, TrackingOption::class.java)
             Log.d("TEST", MyApp.trackingOpt.toString())
-            startTracking()
-            Toast.makeText(
-                this@TrackingActivity,
-                "Chế độ ${MyApp.trackingOpt?.mode}: Bật",
-                Toast.LENGTH_SHORT
-            ).show()
+
+            MyApp.trackingOpt?.let {
+                if (it.on == 1) {
+                    startTracking()
+                } else {
+                    mService?.removeLocationUpdates()
+                }
+
+                Toast.makeText(
+                    this@TrackingActivity,
+                    "Chế độ ${MyApp.trackingOpt?.mode}: ${if (it.on == 1) "Bật" else "Tắt"}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
 
         @JavascriptInterface
@@ -233,7 +230,6 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         @JavascriptInterface
         fun getUUID() {
             val uuid = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-
             GlobalScope.launch(Dispatchers.Main) {
                 webView.evaluateJavascript("javascript:setUUID(\"$uuid\")") {
                     logDebug(msg = "set uuid $uuid")
@@ -250,13 +246,16 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             }
 
             if (Utils.canAccessGPS(this@TrackingActivity)) {
-                val loc = getLastKnownLocation()
-                val latitude = loc?.latitude ?: -1
-                val longitude = loc?.longitude ?: -1
-                Log.d("TEST", "set gps ${latitude} - ${longitude}")
-                GlobalScope.launch(Dispatchers.Main) {
-                    webView.evaluateJavascript("javascript:setGPS(\"${latitude},${longitude}\")") { }
+                getLocation {
+                    val latitude = it.latitude
+                    val longitude = it.longitude
+                    Log.d("TEST", "setGPS: ${latitude} - ${longitude}")
+                    GlobalScope.launch(Dispatchers.Main) {
+                        webView.evaluateJavascript("javascript:setGPS(\"${latitude},${longitude}\")") { }
+                    }
                 }
+
+//                val loc = getLastKnownLocation()
             } else {
                 Utils.requestGPSPermissions(this@TrackingActivity)
             }
@@ -267,7 +266,9 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
             GlobalScope.launch(Dispatchers.Main) {
                 val isGPSEnabled = Utils.isGPSEnabled(this@TrackingActivity)
                 val isServiceRunning = mBound
-                val params = "${MyApp.trackingOpt.toString().dropLast(1)},\"isGPSEnabled\":$isGPSEnabled,\"isServiceRunning\":$isServiceRunning}"
+                val params = "${
+                    MyApp.trackingOpt.toString().dropLast(1)
+                },\"isGPSEnabled\":$isGPSEnabled,\"isServiceRunning\":$isServiceRunning}"
                 Log.d("TEST", "setTrackingStatus $params")
                 webView.evaluateJavascript("javascript:setTrackingStatus($params)") { }
             }
@@ -276,10 +277,44 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
     }
     //endregion
 
+    private fun getLocation(cb: (loc: Location) -> Unit) {
+        val mFusedLocationClient: FusedLocationProviderClient =
+            LocationServices.getFusedLocationProviderClient(this)
+        val mLocationRequest = LocationRequest.create()
+        mLocationRequest.apply {
+            interval = 0
+            fastestInterval = 0
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
+        val mLocationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                super.onLocationResult(locationResult)
+                cb.invoke(locationResult.lastLocation)
+                mFusedLocationClient.removeLocationUpdates(this)
+            }
+        }
+
+        try {
+            mFusedLocationClient.requestLocationUpdates(
+                mLocationRequest,
+                mLocationCallback, Looper.getMainLooper()
+            )
+        } catch (unlikely: SecurityException) {
+            Log.e("TEST", "Lost location permission. Could not request updates. $unlikely")
+        }
+    }
+
     //    @SuppressLint("MissingPermission")
     private fun getLastKnownLocation(): Location? {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION ) != PackageManager.PERMISSION_GRANTED
-            && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+            && ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
             return null
         }
 
@@ -287,7 +322,7 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         val providers: List<String> = mLocationManager.getProviders(true)
         var bestLocation: Location? = null
         for (provider in providers) {
-            val l: Location =  mLocationManager.getLastKnownLocation(provider) ?: continue
+            val l: Location = mLocationManager.getLastKnownLocation(provider) ?: continue
             if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
                 bestLocation = l
             }

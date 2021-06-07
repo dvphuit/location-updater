@@ -139,7 +139,8 @@ class LocationService : Service() {
     fun removeLocationUpdates() {
         Log.i(TAG, "Removing location updates")
         try {
-            mFusedLocationClient!!.removeLocationUpdates(mLocationCallback)
+            tracker?.checkout()
+            mFusedLocationClient!!.removeLocationUpdates(mLocationCallback!!)
             Utils.setRequestingLocationUpdates(this, false)
             stopSelf()
         } catch (unlikely: SecurityException) {
