@@ -242,7 +242,7 @@ class Updater {
             dos.writeBytes(params)
             dos.flush()
 
-            inputStream = conn.inputStream;
+            inputStream = conn.inputStream
             val s = Scanner(inputStream).useDelimiter("\\A")
             response = if (s.hasNext()) s.next() else "0"
         } catch (e: Exception) {

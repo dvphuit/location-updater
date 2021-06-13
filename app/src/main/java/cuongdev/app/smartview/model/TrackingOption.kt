@@ -17,7 +17,7 @@ data class TrackingOption(
     val user: String? = null,
     val extra: String? = null,
     val shift: String? = null,
-    val token: String?
+    val token: String? = null
 ) {
 
     override fun toString(): String {

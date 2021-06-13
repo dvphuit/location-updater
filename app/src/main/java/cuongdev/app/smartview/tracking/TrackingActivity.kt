@@ -249,12 +249,11 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
                 getLocation {
                     val latitude = it.latitude
                     val longitude = it.longitude
-                    Log.d("TEST", "setGPS: ${latitude} - ${longitude}")
+                    Log.d("TEST", "setGPS: $latitude - $longitude")
                     GlobalScope.launch(Dispatchers.Main) {
                         webView.evaluateJavascript("javascript:setGPS(\"${latitude},${longitude}\")") { }
                     }
                 }
-
 //                val loc = getLastKnownLocation()
             } else {
                 Utils.requestGPSPermissions(this@TrackingActivity)
@@ -264,13 +263,9 @@ class TrackingActivity : AppCompatActivity(), LocationListener {
         @JavascriptInterface
         fun getTrackingStatus() {
             GlobalScope.launch(Dispatchers.Main) {
-                val isGPSEnabled = Utils.isGPSEnabled(this@TrackingActivity)
-                val isServiceRunning = mBound
-                val params = "${
-                    MyApp.trackingOpt.toString().dropLast(1)
-                },\"isGPSEnabled\":$isGPSEnabled,\"isServiceRunning\":$isServiceRunning}"
-                Log.d("TEST", "setTrackingStatus $params")
-                webView.evaluateJavascript("javascript:setTrackingStatus($params)") { }
+                val isGPSEnabled = if (Utils.isGPSEnabled(this@TrackingActivity)) 1 else 0
+                val isServiceRunning = if (Utils.requestingLocationUpdates(this@TrackingActivity)) 1 else 0
+                webView.evaluateJavascript("javascript:setTrackingStatus(${MyApp.trackingOpt}, $isGPSEnabled, $isServiceRunning)") { }
             }
         }
 
